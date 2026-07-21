@@ -1,0 +1,141 @@
+:root {
+  /* 自定义字体 - DevOps 风格 */
+  --el-font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
+  --el-font-family-mono: 'Fira Code', monospace;
+
+  /* 圆角 */
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-border-radius-round: 8px;
+  --el-border-radius-circle: 12px;
+
+  /* 自定义间距系统 */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* 字号 */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--el-font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#app {
+  height: 100%;
+}
+
+/* 噪声纹理覆盖层 - 增加质感 */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.015;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--el-bg-color-page);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--el-border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--el-text-color-secondary);
+}
+
+/* 工具类 */
+.font-mono {
+  font-family: var(--el-font-family-mono) !important;
+}
+
+/* 页面进入动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 暗色主题自定义调整 */
+html.dark {
+  --el-bg-color: #0F172A;
+  --el-bg-color-page: #020617;
+  --el-bg-color-overlay: #1E293B;
+}
+
+/* 亮色主题自定义调整 */
+html.light {
+  --el-bg-color: #FFFFFF;
+  --el-bg-color-page: #F8FAFC;
+  --el-bg-color-overlay: #FFFFFF;
+}
+
+/* 卡片悬浮效果 */
+.el-card.is-hover-shadow:hover,
+.el-card[shadow="hover"]:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Element Plus 表格优化 */
+.el-table {
+  font-size: var(--text-sm);
+}
+
+.el-table .cell {
+  padding: 0 12px;
+}
+
+/* 按钮 hover 效果 */
+.el-button {
+  transition: all 0.2s ease;
+}
+
+/* prefers-reduced-motion 无障碍支持 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

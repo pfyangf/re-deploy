@@ -1,0 +1,12 @@
+# 构建产物、IDE、日志等无关文件
+.git
+.gitignore
+.idea
+.vscode
+Dockerfile
+.dockerignore
+*.md
+deploy-agent
+deploy-agent-*
+data
+logs

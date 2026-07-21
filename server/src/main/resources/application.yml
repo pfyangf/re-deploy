@@ -1,0 +1,58 @@
+server:
+  port: 9006
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: redeploy-server
+  datasource:
+    url: jdbc:sqlite:./data/redeploy.db
+    driver-class-name: org.sqlite.JDBC
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.redeploy.model
+  configuration:
+    map-underscore-to-camel-case: true
+
+# Re-Deploy Configuration
+redeploy:
+  # 运维Token（用于Jenkins等自动化场景）
+  admin-token: change-this-to-your-token
+  # 文件存储路径
+  upload-dir: ./data/uploads
+  # Agent下载目录
+  agent-dir: ./data/agents
+  # 日志保留天数
+  log-retention-days: 7
+  # 部署历史保留天数
+  history-retention-days: 7
+  # SSH加密密钥（Base64编码，16/24/32字节对应AES-128/192/256）
+  # 如果留空，启动时会自动生成并打印到日志，请务必保存
+  ssh-encryption-key: 0reB+fd4I9RrIaQTIcoJ3A==
+  # 钉钉Webhook配置
+  dingtalk:
+    enabled: false
+    webhook-url: https://oapi.dingtalk.com/robot/send?access_token=your-token
+    # 通知模式: failure-only, all
+    notify-mode: failure-only
+
+logging:
+  level:
+    root: INFO
+    com.redeploy: DEBUG
+  file:
+    name: ./logs/redeploy-server.log
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 7
+      total-size-cap: 1GB

@@ -1,0 +1,15 @@
+[Unit]
+Description=Deploy Agent Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/deploy-agent/bin/deploy-agent
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+Environment=AGENT_CONFIG_DIR=/opt/deploy-agent/conf
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Agent tooling (not part of shipped product)
+.agents/
+.archon/
+.claude/
+.opencode/
+
+# Build artifacts
+server/target/
+frontend/node_modules/
+frontend/dist/
+agent/deploy-agent
+agent/deploy-agent-linux-amd64
+agent/deploy-agent-linux-arm64
+
+# Runtime data
+data/
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Go
+agent/vendor/
+
+# Compiled frontend assets in server static (tracked separately only when deploying)
+# Note: keep server/src/main/resources/static/ for prod build, ignore build cache
