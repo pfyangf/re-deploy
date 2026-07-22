@@ -60,6 +60,7 @@ function handleEnter() {
     :model-value="modelValue"
     title="服务器调试"
     width="700"
+    :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >

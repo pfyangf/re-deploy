@@ -55,7 +55,7 @@ public class TaskController {
             
             if (task.getBeforeCommand() != null && !task.getBeforeCommand().isEmpty()) {
                 steps.add(Map.of(
-                    "type", "command",
+                    "type", "shell",
                     "name", "前置命令",
                     "command", task.getBeforeCommand()
                 ));
@@ -69,7 +69,7 @@ public class TaskController {
             
             if (task.getAfterCommand() != null && !task.getAfterCommand().isEmpty()) {
                 steps.add(Map.of(
-                    "type", "command",
+                    "type", "shell",
                     "name", "后置命令",
                     "command", task.getAfterCommand()
                 ));
@@ -86,7 +86,7 @@ public class TaskController {
         if ("command".equals(task.getTaskType()) && task.getStepsDefinition() == null) {
             List<Map<String, Object>> steps = new ArrayList<>();
             steps.add(Map.of(
-                "type", "command",
+                "type", "shell",
                 "name", "执行命令",
                 "command", task.getBeforeCommand() != null ? task.getBeforeCommand() : ""
             ));
@@ -108,9 +108,17 @@ public class TaskController {
                     existing.setName(task.getName());
                     existing.setDescription(task.getDescription());
                     existing.setTaskType(task.getTaskType());
+                    existing.setGroupId(task.getGroupId());
                     existing.setDeployPath(task.getDeployPath());
                     existing.setBeforeCommand(task.getBeforeCommand());
                     existing.setAfterCommand(task.getAfterCommand());
+                    // Update Jenkins configuration fields
+                    existing.setJenkinsEnabled(task.getJenkinsEnabled());
+                    existing.setJenkinsUrl(task.getJenkinsUrl());
+                    existing.setJenkinsJobName(task.getJenkinsJobName());
+                    existing.setJenkinsArtifactPath(task.getJenkinsArtifactPath());
+                    existing.setJenkinsUser(task.getJenkinsUser());
+                    existing.setJenkinsToken(task.getJenkinsToken());
                     
                     // Rebuild steps definition if needed
                     if ("deploy".equals(task.getTaskType()) && task.getStepsDefinition() == null) {
@@ -118,7 +126,7 @@ public class TaskController {
                         
                         if (existing.getBeforeCommand() != null && !existing.getBeforeCommand().isEmpty()) {
                             steps.add(Map.of(
-                                "type", "command",
+                                "type", "shell",
                                 "name", "前置命令",
                                 "command", existing.getBeforeCommand()
                             ));
@@ -132,7 +140,7 @@ public class TaskController {
                         
                         if (existing.getAfterCommand() != null && !existing.getAfterCommand().isEmpty()) {
                             steps.add(Map.of(
-                                "type", "command",
+                                "type", "shell",
                                 "name", "后置命令",
                                 "command", existing.getAfterCommand()
                             ));
@@ -146,7 +154,7 @@ public class TaskController {
                     } else if ("command".equals(task.getTaskType()) && task.getStepsDefinition() == null) {
                         List<Map<String, Object>> steps = new ArrayList<>();
                         steps.add(Map.of(
-                            "type", "command",
+                            "type", "shell",
                             "name", "执行命令",
                             "command", existing.getBeforeCommand() != null ? existing.getBeforeCommand() : ""
                         ));

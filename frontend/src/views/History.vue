@@ -52,14 +52,15 @@ onMounted(() => {
             <span class="font-mono">{{ row.id }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="taskId" label="任务ID" width="100">
+        <el-table-column label="任务" min-width="160">
           <template #default="{ row }">
-            {{ row.taskId || '-' }}
+            <span class="fw-medium">{{ row.taskName || (row.taskId ? '任务#' + row.taskId : '-') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="版本" min-width="120">
           <template #default="{ row }">
-            <span class="fw-medium">{{ row.version || '-' }}</span>
+            <el-tag v-if="row.version" type="info" effect="plain" size="small">{{ row.version }}</el-tag>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
@@ -120,5 +121,9 @@ onMounted(() => {
 
 .text-sm {
   font-size: var(--text-sm);
+}
+
+.text-muted {
+  color: var(--el-text-color-secondary);
 }
 </style>

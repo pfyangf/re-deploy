@@ -3,6 +3,8 @@ package com.redeploy.service;
 import com.redeploy.model.Agent;
 import com.redeploy.model.Server;
 import com.redeploy.repository.AgentMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -16,17 +18,21 @@ import java.util.Optional;
 @Service
 public class AgentService {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentService.class);
+
     @Autowired
     private AgentMapper agentMapper;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     public boolean testConnection(Server server) {
+        String url = String.format("http://%s:%d/api/health", server.getHost(), server.getPort());
         try {
-            String url = String.format("http://%s:%d/api/health", server.getHost(), server.getPort());
+            log.info("[Agent] GET {} (testConnection)", url);
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             return response.getStatusCode() == HttpStatus.OK;
         } catch (Exception e) {
+            log.warn("[Agent] testConnection failed url={} err={}", url, e.getMessage());
             return false;
         }
     }
@@ -106,6 +112,7 @@ public class AgentService {
 
         try {
             // 提交任务
+            log.info("[Agent] POST {} (executeCommand) command={}", executeUrl, command);
             ResponseEntity<Map> response = restTemplate.postForEntity(executeUrl, entity, Map.class);
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 result.put("success", false);
@@ -122,6 +129,7 @@ public class AgentService {
 
             // 轮询任务状态直到完成（最多等待 65 秒，对应 step.timeout=60 + 5 秒缓冲）
             String statusUrl = baseUrl + "/api/task/" + taskId + "/status";
+            log.info("[Agent] Polling {} taskId={}", statusUrl, taskId);
             HttpHeaders statusHeaders = new HttpHeaders();
             statusHeaders.setBearerAuth(server.getAgentToken());
             HttpEntity<Void> statusEntity = new HttpEntity<>(statusHeaders);

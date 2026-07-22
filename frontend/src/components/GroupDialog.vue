@@ -72,6 +72,7 @@ async function handleSubmit() {
     :model-value="modelValue"
     :title="group ? '编辑分组' : '新增分组'"
     width="500"
+    :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >

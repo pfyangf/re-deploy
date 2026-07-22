@@ -15,6 +15,9 @@ public class DeployHistory {
     private String logs;
     private LocalDateTime createdAt;
 
+    // Transient: filled by controller from tasks table for UI display, not persisted
+    private String taskName;
+
     public DeployHistory() {}
 
     public Long getId() { return id; }
@@ -46,4 +49,7 @@ public class DeployHistory {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getTaskName() { return taskName; }
+    public void setTaskName(String taskName) { this.taskName = taskName; }
 }

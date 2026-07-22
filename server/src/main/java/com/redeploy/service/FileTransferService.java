@@ -1,5 +1,7 @@
 package com.redeploy.service;
 
+import com.fasterxml.jackson.databind.util.JSONPObject;
+import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,11 +13,16 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class FileTransferService {
@@ -34,75 +41,104 @@ public class FileTransferService {
             String md5 = calculateMD5(file);
             long fileSize = file.length();
 
+            // Init request is JSON, not multipart (agent expects JSON)
             HttpHeaders headers = createHeaders(agentToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            MultiValueMap<String, Object> initRequest = new LinkedMultiValueMap<>();
-            initRequest.add("filename", filename);
-            initRequest.add("file_size", fileSize);
-            initRequest.add("md5", md5);
+            Map<String, Object> initRequest = new HashMap<>();
+            initRequest.put("filename", filename);
+            initRequest.put("file_size", fileSize);
+            initRequest.put("md5", md5);
 
-            HttpEntity<MultiValueMap<String, Object>> initEntity = new HttpEntity<>(initRequest, headers);
+            HttpEntity<Map<String, Object>> initEntity = new HttpEntity<>(initRequest, headers);
+            String initUrl = baseUrl + "/api/upload/init";
+            log.info("[Upload] POST {} filename={} size={} md5={}", initUrl, filename, fileSize, md5);
             ResponseEntity<UploadInitResponse> initResponse = restTemplate.exchange(
-                    baseUrl + "/api/upload/init",
+                    initUrl,
                     HttpMethod.POST,
                     initEntity,
                     UploadInitResponse.class
             );
+            log.info("[Upload] POST {} response={}", initUrl, initResponse.getBody());
 
             if (initResponse.getStatusCode() != HttpStatus.OK || initResponse.getBody() == null) {
-                log.error("Failed to initialize upload to agent");
+                log.error("[Upload] Failed to initialize upload to agent, url={}", initUrl);
                 return false;
             }
 
             String uploadId = initResponse.getBody().getUploadId();
             int chunkSize = initResponse.getBody().getChunkSize();
+            if (chunkSize <= 0) {
+                chunkSize = CHUNK_SIZE;
+            }
+            log.info("[Upload] Init response uploadId={} chunkSize={}", uploadId, chunkSize);
 
-            // Step 2: Upload chunks
-            byte[] fileBytes = Files.readAllBytes(file.toPath());
-            int totalChunks = (int) Math.ceil((double) fileBytes.length / chunkSize);
+            // Step 2: Upload chunks - stream file instead of loading all into memory
+            // This avoids high memory usage with large files
+            int totalChunks = (int) Math.ceil((double) file.length() / chunkSize);
+            byte[] chunk = new byte[chunkSize];
+            int seq = 0;
 
-            for (int i = 0; i < totalChunks; i++) {
-                int start = i * chunkSize;
-                int end = Math.min(start + chunkSize, fileBytes.length);
-                byte[] chunk = new byte[end - start];
-                System.arraycopy(fileBytes, start, chunk, 0, end - start);
+            try (InputStream is = Files.newInputStream(file.toPath());
+                 BufferedInputStream bis = new BufferedInputStream(is)) {
 
-                MultiValueMap<String, Object> chunkRequest = new LinkedMultiValueMap<>();
-                chunkRequest.add("chunk", new ByteArrayResource(chunk) {
-                    @Override
-                    public String getFilename() {
-                        return "chunk";
+                int bytesRead;
+                while ((bytesRead = bis.read(chunk)) != -1) {
+                    // Create a new byte array for exact length of this chunk
+                    byte[] exactChunk = chunk;
+                    if (bytesRead != chunk.length) {
+                        exactChunk = new byte[bytesRead];
+                        System.arraycopy(chunk, 0, exactChunk, 0, bytesRead);
                     }
-                });
-                chunkRequest.add("seq", String.valueOf(i));
 
-                HttpEntity<MultiValueMap<String, Object>> chunkEntity = new HttpEntity<>(chunkRequest, headers);
-                ResponseEntity<String> chunkResponse = restTemplate.exchange(
-                        baseUrl + "/api/upload/" + uploadId + "/chunk",
-                        HttpMethod.POST,
-                        chunkEntity,
-                        String.class
-                );
+                    MultiValueMap<String, Object> chunkRequest = new LinkedMultiValueMap<>();
+                    chunkRequest.add("chunk", new ByteArrayResource(exactChunk) {
+                        @Override
+                        public String getFilename() {
+                            return "chunk";
+                        }
+                    });
+                    chunkRequest.add("seq", String.valueOf(seq));
 
-                if (chunkResponse.getStatusCode() != HttpStatus.OK) {
-                    log.error("Failed to upload chunk {} to agent", i);
-                    return false;
+                    // Chunk upload needs multipart/form-data
+                    HttpHeaders chunkHeaders = createHeaders(agentToken);
+                    chunkHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+                    HttpEntity<MultiValueMap<String, Object>> chunkEntity = new HttpEntity<>(chunkRequest, chunkHeaders);
+                    String chunkUrl = baseUrl + "/api/upload/" + uploadId + "/chunk";
+                    log.debug("[Upload] POST {} seq={} bytes={}", chunkUrl, seq, bytesRead);
+                    ResponseEntity<String> chunkResponse = restTemplate.exchange(
+                            chunkUrl,
+                            HttpMethod.POST,
+                            chunkEntity,
+                            String.class
+                    );
+
+                    if (chunkResponse.getStatusCode() != HttpStatus.OK) {
+                        log.error("[Upload] Failed to upload chunk {} to agent, url={}", seq, chunkUrl);
+                        return false;
+                    }
+
+                    log.debug("[Upload] Uploaded chunk {}/{} to agent", seq + 1, totalChunks);
+                    seq++;
                 }
-
-                log.debug("Uploaded chunk {}/{} to agent", i + 1, totalChunks);
+            } catch (IOException e) {
+                log.error("Failed to read file for chunked upload", e);
+                return false;
             }
 
             // Step 3: Complete upload
-            HttpEntity<Void> completeEntity = new HttpEntity<>(headers);
+            HttpEntity<Void> completeEntity = new HttpEntity<>(createHeaders(agentToken));
+            String completeUrl = baseUrl + "/api/upload/" + uploadId + "/complete";
+            log.info("[Upload] POST {} totalChunks={}", completeUrl, seq);
             ResponseEntity<String> completeResponse = restTemplate.exchange(
-                    baseUrl + "/api/upload/" + uploadId + "/complete",
+                    completeUrl,
                     HttpMethod.POST,
                     completeEntity,
                     String.class
             );
 
             if (completeResponse.getStatusCode() != HttpStatus.OK) {
-                log.error("Failed to complete upload to agent");
+                log.error("[Upload] Failed to complete upload to agent, url={}", completeUrl);
                 return false;
             }
 
@@ -117,16 +153,24 @@ public class FileTransferService {
 
     private HttpHeaders createHeaders(String token) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
         headers.set("Authorization", "Bearer " + token);
         return headers;
     }
 
     private String calculateMD5(File file) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
-        byte[] fileBytes = Files.readAllBytes(file.toPath());
-        byte[] digest = md.digest(fileBytes);
+        byte[] buffer = new byte[8192];
+        int bytesRead;
 
+        try (InputStream is = Files.newInputStream(file.toPath());
+             BufferedInputStream bis = new BufferedInputStream(is)) {
+
+            while ((bytesRead = bis.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
+            }
+        }
+
+        byte[] digest = md.digest();
         StringBuilder sb = new StringBuilder();
         for (byte b : digest) {
             sb.append(String.format("%02x", b));
@@ -134,24 +178,27 @@ public class FileTransferService {
         return sb.toString();
     }
 
+    @ToString
     private static class UploadInitResponse {
-        private String uploadId;
-        private int chunkSize;
+        private String upload_id;
+        private int chunk_size;
 
+        @JsonProperty("upload_id")
         public String getUploadId() {
-            return uploadId;
+            return upload_id;
         }
 
         public void setUploadId(String uploadId) {
-            this.uploadId = uploadId;
+            this.upload_id = uploadId;
         }
 
+        @JsonProperty("chunk_size")
         public int getChunkSize() {
-            return chunkSize;
+            return chunk_size;
         }
 
         public void setChunkSize(int chunkSize) {
-            this.chunkSize = chunkSize;
+            this.chunk_size = chunkSize;
         }
     }
 }

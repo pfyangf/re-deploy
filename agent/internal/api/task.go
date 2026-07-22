@@ -3,7 +3,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -39,11 +42,12 @@ type TaskExecuteRequest struct {
 }
 
 type StepDef struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Command string `json:"command"`
-	Script  string `json:"script"`
-	Timeout int    `json:"timeout"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Command    string `json:"command"`
+	Script     string `json:"script"`
+	DeployPath string `json:"deployPath"`
+	Timeout    int    `json:"timeout"`
 }
 
 var (
@@ -148,10 +152,40 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 		var err error
 
 		switch step.Type {
-		case "shell":
+		case "shell", "command":
 			output, exitCode, err = executor.ExecuteShell(step.Command, step.Timeout)
 		case "script":
 			output, exitCode, err = executor.ExecuteScript(step.Script, params, step.Timeout)
+		case "deploy":
+			// Deploy step: copy uploaded artifact to target deployment path
+			artifactFilename, hasArtifact := params["artifactFilename"]
+			if !hasArtifact || artifactFilename == "" {
+				output = "Missing artifactFilename parameter for deploy step"
+				exitCode = 1
+			} else {
+				// Source: ./data/artifacts/{filename}
+				srcPath := filepath.Join(s.cfg.DataDir, "artifacts", artifactFilename)
+				destPath := step.DeployPath
+				if destPath == "" {
+					output = "Missing deployPath in deploy step configuration"
+					exitCode = 1
+				} else {
+					// Check if destination is a directory, if so append filename
+					fi, errStat := os.Stat(destPath)
+					if errStat == nil && fi.IsDir() {
+						destPath = filepath.Join(destPath, artifactFilename)
+					}
+					// Copy the file
+					err = copyFile(srcPath, destPath)
+					if err != nil {
+						output = fmt.Sprintf("Failed to deploy artifact: %v", err)
+						exitCode = 1
+					} else {
+						output = fmt.Sprintf("Successfully deployed artifact %s to %s", artifactFilename, destPath)
+						exitCode = 0
+					}
+				}
+			}
 		default:
 			output = fmt.Sprintf("Unknown step type: %s", step.Type)
 			exitCode = 1
@@ -189,4 +223,26 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 	execution.Status = "success"
 	now := time.Now()
 	execution.EndTime = &now
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+if err != nil {
+	return err
+}
+defer srcFile.Close()
+
+// Create destination directory if needed
+dstDir := filepath.Dir(dst)
+os.MkdirAll(dstDir, 0755)
+
+dstFile, err := os.Create(dst)
+if err != nil {
+	return err
+}
+defer dstFile.Close()
+
+_, err = io.Copy(dstFile, srcFile)
+return err
 }

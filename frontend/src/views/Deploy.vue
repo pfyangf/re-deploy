@@ -15,7 +15,19 @@ const submitting = ref(false)
 const form = ref({
   taskId: '',
   serverIds: [],
-  version: ''
+  version: '',
+  jenkinsBuildNumber: ''
+})
+
+// Get selected task object
+const selectedTask = computed(() => {
+  if (!form.value.taskId) return null
+  return tasks.value.find(t => t.id === parseInt(form.value.taskId))
+})
+
+// Check if selected task has Jenkins enabled
+const showJenkinsBuildNumber = computed(() => {
+  return selectedTask.value && selectedTask.value.jenkinsEnabled
 })
 
 function getGroupName(groupId) {
@@ -63,14 +75,25 @@ async function handleSubmit() {
     ElMessage.warning('请至少选择一个服务器')
     return
   }
+  // If Jenkins enabled, require build number
+  if (showJenkinsBuildNumber.value && !form.value.jenkinsBuildNumber) {
+    ElMessage.warning('任务启用了 Jenkins，请输入构建号')
+    return
+  }
 
   submitting.value = true
   try {
-    const result = await api.createDeploy({
+    const requestData = {
       taskId: parseInt(form.value.taskId),
       serverIds: form.value.serverIds,
-      version: form.value.version
-    })
+      version: form.value.version,
+      params: {}
+    }
+    // Add jenkins build number to params if present
+    if (form.value.jenkinsBuildNumber) {
+      requestData.params.jenkinsBuildNumber = form.value.jenkinsBuildNumber
+    }
+    const result = await api.createDeploy(requestData)
     if (result && result.deployId) {
       ElMessage.success(`部署已启动，ID: ${result.deployId}`)
       router.push('/history')
@@ -143,6 +166,15 @@ onMounted(() => {
             placeholder="例如: v1.0.0"
             style="max-width: 300px"
           />
+        </el-form-item>
+
+        <el-form-item v-if="showJenkinsBuildNumber" label="Jenkins 构建号">
+          <el-input
+            v-model="form.jenkinsBuildNumber"
+            placeholder="例如: 164"
+            style="max-width: 300px"
+          />
+          <div class="hint">输入要部署的构建编号，从 Jenkins 获取</div>
         </el-form-item>
 
         <el-form-item>
@@ -221,5 +253,11 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
   font-size: var(--text-sm);
   margin-left: var(--spacing-1);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
 }
 </style>

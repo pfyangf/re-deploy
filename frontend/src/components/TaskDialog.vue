@@ -1,14 +1,19 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import api from '../api/client'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  groups: { type: Array, default: () => [] }
+  groups: { type: Array, default: () => [] },
+  task: { type: Object, default: null }, // 编辑模式传入任务对象
+  mode: { type: String, default: 'edit' } // 'edit' | 'copy'，仅在传入 task 时区分
 })
 
 const emit = defineEmits(['update:modelValue', 'success'])
+
+const isCopy = computed(() => !!props.task && props.mode === 'copy')
+const isEdit = computed(() => !!props.task && props.mode !== 'copy')
 
 const form = ref({
   name: '',
@@ -17,21 +22,53 @@ const form = ref({
   deployPath: '/opt/application',
   beforeCommand: '',
   afterCommand: '',
-  description: ''
+  description: '',
+  jenkinsEnabled: false,
+  jenkinsUrl: '',
+  jenkinsJobName: '',
+  jenkinsArtifactPath: '',
+  jenkinsUser: '',
+  jenkinsToken: ''
 })
 
 const loading = ref(false)
 
 watch(() => props.modelValue, (visible) => {
   if (visible) {
-    form.value = {
-      name: '',
-      groupId: props.groups[0]?.id || '',
-      taskType: 'deploy',
-      deployPath: '/opt/application',
-      beforeCommand: '',
-      afterCommand: '',
-      description: ''
+    if (props.task) {
+      // Edit / Copy mode - fill with existing data
+      form.value = {
+        name: isCopy.value ? `${props.task.name || ''} 副本` : (props.task.name || ''),
+        groupId: props.task.groupId?.toString() || '',
+        taskType: props.task.taskType || 'deploy',
+        deployPath: props.task.deployPath || '/opt/application',
+        beforeCommand: props.task.beforeCommand || '',
+        afterCommand: props.task.afterCommand || '',
+        description: props.task.description || '',
+        jenkinsEnabled: props.task.jenkinsEnabled || false,
+        jenkinsUrl: props.task.jenkinsUrl || '',
+        jenkinsJobName: props.task.jenkinsJobName || '',
+        jenkinsArtifactPath: props.task.jenkinsArtifactPath || '',
+        jenkinsUser: props.task.jenkinsUser || '',
+        jenkinsToken: props.task.jenkinsToken || ''
+      }
+    } else {
+      // Create mode - reset to defaults
+      form.value = {
+        name: '',
+        groupId: props.groups[0]?.id || '',
+        taskType: 'deploy',
+        deployPath: '/opt/application',
+        beforeCommand: '',
+        afterCommand: '',
+        description: '',
+        jenkinsEnabled: false,
+        jenkinsUrl: '',
+        jenkinsJobName: '',
+        jenkinsArtifactPath: '',
+        jenkinsUser: '',
+        jenkinsToken: ''
+      }
     }
   }
 })
@@ -52,24 +89,44 @@ async function handleSubmit() {
       ...form.value,
       groupId: parseInt(form.value.groupId)
     }
-    await api.createTask(data)
-    ElMessage.success('创建成功')
+    if (isEdit.value) {
+      // Edit mode
+      await api.updateTask(props.task.id, data)
+      ElMessage.success('更新成功')
+    } else {
+      // Create mode (or copy mode -> create new task from clone)
+      await api.createTask(data)
+      ElMessage.success(isCopy.value ? '复制成功' : '创建成功')
+    }
     emit('success')
     handleClose()
   } catch (error) {
-    ElMessage.error('创建失败')
+    ElMessage.error(isEdit.value ? '更新失败' : (isCopy.value ? '复制失败' : '创建失败'))
     console.error(error)
   } finally {
     loading.value = false
   }
 }
+
+const dialogTitle = computed(() => {
+  if (isEdit.value) return '编辑任务'
+  if (isCopy.value) return '复制任务'
+  return '创建任务'
+})
+
+const submitButtonText = computed(() => {
+  if (isEdit.value) return '保存'
+  if (isCopy.value) return '复制'
+  return '创建'
+})
 </script>
 
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="创建任务"
+    :title="dialogTitle"
     width="600"
+    :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -118,6 +175,33 @@ async function handleSubmit() {
         />
       </el-form-item>
 
+      <el-form-item label="Jenkins 集成">
+        <el-checkbox v-model="form.jenkinsEnabled">启用 Jenkins 构建物下载</el-checkbox>
+      </el-form-item>
+
+      <template v-if="form.jenkinsEnabled">
+        <el-form-item label="Jenkins 地址">
+          <el-input v-model="form.jenkinsUrl" placeholder="http://jenkins:8080" />
+        </el-form-item>
+
+        <el-form-item label="Job 名称">
+          <el-input v-model="form.jenkinsJobName" placeholder="job/group/job-name" />
+          <div class="hint">完整路径，和 Jenkins URL 拼接后可访问</div>
+        </el-form-item>
+
+        <el-form-item label="构件路径">
+          <el-input v-model="form.jenkinsArtifactPath" placeholder="project/target/app.war" />
+        </el-form-item>
+
+        <el-form-item label="用户名">
+          <el-input v-model="form.jenkinsUser" placeholder="Jenkins 用户名（需要下载权限）" />
+        </el-form-item>
+
+        <el-form-item label="API Token">
+          <el-input v-model="form.jenkinsToken" type="password" placeholder="Jenkins API Token" />
+        </el-form-item>
+      </template>
+
       <el-form-item label="描述">
         <el-input
           v-model="form.description"
@@ -131,8 +215,16 @@ async function handleSubmit() {
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        创建
+        {{ submitButtonText }}
       </el-button>
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+.hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+}
+</style>

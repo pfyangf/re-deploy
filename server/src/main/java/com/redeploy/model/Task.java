@@ -13,6 +13,12 @@ public class Task {
     private String beforeCommand;
     private String afterCommand;
     private String stepsDefinition;
+    private Boolean jenkinsEnabled;
+    private String jenkinsUrl;
+    private String jenkinsJobName;
+    private String jenkinsArtifactPath;
+    private String jenkinsUser;
+    private String jenkinsToken;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -44,6 +50,24 @@ public class Task {
 
     public String getStepsDefinition() { return stepsDefinition; }
     public void setStepsDefinition(String stepsDefinition) { this.stepsDefinition = stepsDefinition; }
+
+    public Boolean getJenkinsEnabled() { return jenkinsEnabled; }
+    public void setJenkinsEnabled(Boolean jenkinsEnabled) { this.jenkinsEnabled = jenkinsEnabled; }
+
+    public String getJenkinsUrl() { return jenkinsUrl; }
+    public void setJenkinsUrl(String jenkinsUrl) { this.jenkinsUrl = jenkinsUrl; }
+
+    public String getJenkinsJobName() { return jenkinsJobName; }
+    public void setJenkinsJobName(String jenkinsJobName) { this.jenkinsJobName = jenkinsJobName; }
+
+    public String getJenkinsArtifactPath() { return jenkinsArtifactPath; }
+    public void setJenkinsArtifactPath(String jenkinsArtifactPath) { this.jenkinsArtifactPath = jenkinsArtifactPath; }
+
+    public String getJenkinsUser() { return jenkinsUser; }
+    public void setJenkinsUser(String jenkinsUser) { this.jenkinsUser = jenkinsUser; }
+
+    public String getJenkinsToken() { return jenkinsToken; }
+    public void setJenkinsToken(String jenkinsToken) { this.jenkinsToken = jenkinsToken; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

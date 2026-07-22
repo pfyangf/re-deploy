@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS tasks (
     before_command TEXT,
     after_command TEXT,
     steps_definition TEXT NOT NULL,
+    jenkins_enabled BOOLEAN DEFAULT 0,
+    jenkins_url VARCHAR(500),
+    jenkins_job_name VARCHAR(200),
+    jenkins_artifact_path VARCHAR(500),
+    jenkins_user VARCHAR(100),
+    jenkins_token VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

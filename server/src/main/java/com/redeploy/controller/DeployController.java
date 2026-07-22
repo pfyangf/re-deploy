@@ -53,7 +53,15 @@ public class DeployController {
         DeployHistory history = new DeployHistory();
         history.setTaskId(request.getTaskId());
         history.setServerIds(request.getServerIds().toString());
-        history.setVersion(request.getVersion());
+        // Auto-fill version from Jenkins build number when user didn't provide one
+        String version = request.getVersion();
+        if ((version == null || version.isEmpty()) && request.getParams() != null) {
+            String buildNumber = request.getParams().get("jenkinsBuildNumber");
+            if (buildNumber != null && !buildNumber.isEmpty()) {
+                version = "#" + buildNumber;
+            }
+        }
+        history.setVersion(version);
         history.setStatus("running");
         history.setStartedAt(LocalDateTime.now());
         deployHistoryMapper.insert(history);
@@ -78,10 +86,21 @@ public class DeployController {
     public List<DeployHistory> getDeployHistory(
             @RequestParam(required = false) Long serverId,
             @RequestParam(required = false) String status) {
-        if (status != null) {
-            return deployHistoryMapper.findByStatus(status);
+        List<DeployHistory> list = (status != null)
+                ? deployHistoryMapper.findByStatus(status)
+                : deployHistoryMapper.findAllOrderByCreatedAtDesc();
+        // Populate task name for UI display
+        java.util.Map<Long, String> taskNameCache = new java.util.HashMap<>();
+        for (DeployHistory h : list) {
+            if (h.getTaskId() == null) continue;
+            String name = taskNameCache.get(h.getTaskId());
+            if (name == null) {
+                name = taskMapper.findById(h.getTaskId()).map(Task::getName).orElse(null);
+                taskNameCache.put(h.getTaskId(), name);
+            }
+            h.setTaskName(name);
         }
-        return deployHistoryMapper.findAllOrderByCreatedAtDesc();
+        return list;
     }
 
     @PostMapping("/{id}/cancel")

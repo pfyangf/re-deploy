@@ -2,14 +2,18 @@
 import { onMounted, ref, computed } from 'vue'
 import api from '../api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, View, Delete } from '@element-plus/icons-vue'
+import { Plus, View, Edit, Delete, CopyDocument } from '@element-plus/icons-vue'
 import TaskDialog from '../components/TaskDialog.vue'
 
 const groups = ref([])
 const tasks = ref([])
 const loading = ref(false)
 const groupFilter = ref('')
-const dialogVisible = ref(false)
+const createDialogVisible = ref(false)
+const editDialogVisible = ref(false)
+const copyDialogVisible = ref(false)
+const viewDialogVisible = ref(false)
+const currentTask = ref(null)
 
 const filteredTasks = computed(() => {
   if (!groupFilter.value) return tasks.value
@@ -31,6 +35,10 @@ function getTaskTypeTag(type) {
   return type === 'deploy' ? 'primary' : 'success'
 }
 
+function getJenkinsEnabledLabel(enabled) {
+  return enabled ? '是' : '否'
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -49,7 +57,22 @@ async function loadData() {
 }
 
 function handleAdd() {
-  dialogVisible.value = true
+  createDialogVisible.value = true
+}
+
+function handleView(task) {
+  currentTask.value = task
+  viewDialogVisible.value = true
+}
+
+function handleEdit(task) {
+  currentTask.value = task
+  editDialogVisible.value = true
+}
+
+function handleCopy(task) {
+  currentTask.value = task
+  copyDialogVisible.value = true
 }
 
 async function handleDelete(task) {
@@ -134,9 +157,11 @@ onMounted(() => {
             <span class="text-sm">{{ new Date(row.createdAt).toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right">
           <template #default="{ row }">
-            <el-button text type="primary" :icon="View">查看</el-button>
+            <el-button text type="primary" :icon="View" @click="handleView(row)">查看</el-button>
+            <el-button text type="primary" :icon="Edit" @click="handleEdit(row)">编辑</el-button>
+            <el-button text type="primary" :icon="CopyDocument" @click="handleCopy(row)">复制</el-button>
             <el-button text type="danger" :icon="Delete" @click="handleDelete(row)">
               删除
             </el-button>
@@ -145,11 +170,60 @@ onMounted(() => {
       </el-table>
     </el-card>
 
+    <!-- 创建任务对话框 -->
     <TaskDialog
-      v-model="dialogVisible"
+      v-model="createDialogVisible"
       :groups="groups"
       @success="onDialogClose"
     />
+
+    <!-- 编辑任务对话框 -->
+    <TaskDialog
+      v-model="editDialogVisible"
+      :groups="groups"
+      :task="currentTask"
+      mode="edit"
+      @success="onDialogClose"
+    />
+
+    <!-- 复制任务对话框 -->
+    <TaskDialog
+      v-model="copyDialogVisible"
+      :groups="groups"
+      :task="currentTask"
+      mode="copy"
+      @success="onDialogClose"
+    />
+
+    <!-- 查看详情只读对话框 -->
+    <el-dialog
+      v-model="viewDialogVisible"
+      title="任务详情"
+      width="600"
+    >
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="ID">{{ currentTask?.id }}</el-descriptions-item>
+        <el-descriptions-item label="名称">{{ currentTask?.name }}</el-descriptions-item>
+        <el-descriptions-item label="类型">{{ getTaskTypeLabel(currentTask?.taskType) }}</el-descriptions-item>
+        <el-descriptions-item label="分组">{{ getGroupName(currentTask?.groupId) }}</el-descriptions-item>
+        <el-descriptions-item label="部署路径">{{ currentTask?.deployPath || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="前置命令">{{ currentTask?.beforeCommand || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="后置命令">{{ currentTask?.afterCommand || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="Jenkins 集成">{{ getJenkinsEnabledLabel(currentTask?.jenkinsEnabled) }}</el-descriptions-item>
+        <template v-if="currentTask?.jenkinsEnabled">
+          <el-descriptions-item label="Jenkins 地址">{{ currentTask?.jenkinsUrl }}</el-descriptions-item>
+          <el-descriptions-item label="Job 名称">{{ currentTask?.jenkinsJobName }}</el-descriptions-item>
+          <el-descriptions-item label="构件路径">{{ currentTask?.jenkinsArtifactPath }}</el-descriptions-item>
+          <el-descriptions-item label="用户名">{{ currentTask?.jenkinsUser || '-' }}</el-descriptions-item>
+        </template>
+        <el-descriptions-item label="描述">{{ currentTask?.description || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ currentTask?.createdAt ? new Date(currentTask.createdAt).toLocaleString() : '-' }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ currentTask?.updatedAt ? new Date(currentTask.updatedAt).toLocaleString() : '-' }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="viewDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

@@ -11,7 +11,7 @@ spring:
     driver-class-name: org.sqlite.JDBC
   sql:
     init:
-      mode: always
+      mode: never
       schema-locations: classpath:schema.sql
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -26,7 +26,7 @@ mybatis:
 # Re-Deploy Configuration
 redeploy:
   # 运维Token（用于Jenkins等自动化场景）
-  admin-token: change-this-to-your-token
+  admin-token: re-deploy
   # 文件存储路径
   upload-dir: ./data/uploads
   # Agent下载目录

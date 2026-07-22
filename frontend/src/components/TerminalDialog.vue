@@ -113,6 +113,7 @@ onUnmounted(() => {
     :model-value="modelValue"
     title="SSH 终端"
     width="900"
+    :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >

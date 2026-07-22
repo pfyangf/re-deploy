@@ -14,6 +14,9 @@ public interface ArtifactMapper {
     @Select("SELECT * FROM artifacts WHERE id = #{id}")
     Optional<Artifact> findById(Long id);
 
+    @Select("SELECT * FROM artifacts WHERE file_path = #{filePath}")
+    Optional<Artifact> findByFilePath(@Param("filePath") String filePath);
+
     @Insert("INSERT INTO artifacts (filename, file_path, file_size, md5, uploaded_at) " +
             "VALUES (#{filename}, #{filePath}, #{fileSize}, #{md5}, datetime('now'))")
     @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "id", before = false, resultType = Long.class)
@@ -21,4 +24,7 @@ public interface ArtifactMapper {
 
     @Delete("DELETE FROM artifacts WHERE id = #{id}")
     int deleteById(Long id);
+
+    @Delete("DELETE FROM artifacts WHERE file_path = #{filePath}")
+    int deleteByFilePath(@Param("filePath") String filePath);
 }

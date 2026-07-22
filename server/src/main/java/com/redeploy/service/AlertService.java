@@ -89,6 +89,7 @@ public class AlertService {
             // Retry up to 3 times
             for (int i = 0; i < 3; i++) {
                 try {
+                    log.info("[Alert] POST {} (attempt {}/3)", webhookUrl, i + 1);
                     ResponseEntity<String> response = restTemplate.exchange(
                             webhookUrl, HttpMethod.POST, entity, String.class);
 

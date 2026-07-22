@@ -78,6 +78,7 @@ async function handleSubmit() {
     :model-value="modelValue"
     title="添加服务器"
     width="700"
+    :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >

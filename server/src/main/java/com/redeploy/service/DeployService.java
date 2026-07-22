@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +34,12 @@ public class DeployService {
     @Autowired
     private AlertService alertService;
 
+    @Autowired
+    private JenkinsService jenkinsService;
+
+    @Autowired
+    private ArtifactService artifactService;
+
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
@@ -42,12 +49,58 @@ public class DeployService {
         log.info("Starting deployment {} for task '{}' to {} servers",
                 history.getId(), task.getName(), servers.size());
 
+        // Handle Jenkins artifact download if enabled
+        File downloadedArtifact = null;
+        if (Boolean.TRUE.equals(task.getJenkinsEnabled())) {
+            // Check if build number is provided
+            String buildNumber = params != null ? params.get("jenkinsBuildNumber") : null;
+            if (buildNumber == null || buildNumber.isEmpty()) {
+                // Fail immediately if no build number provided
+                history.setStatus("failed");
+                history.setCompletedAt(LocalDateTime.now());
+                history.setErrorMessage("Jenkins is enabled but no build number provided");
+                history.setLogs("Jenkins enabled but missing build number, deployment aborted");
+                deployHistoryMapper.insert(history);
+                alertService.sendFailureAlert(history, Collections.singletonList(
+                        new DeployResult("all", false, "Missing build number for Jenkins-enabled task")
+                ));
+                log.error("Deployment aborted: Jenkins enabled but no build number provided");
+                return;
+            }
+
+            // Download artifact from Jenkins
+            try {
+                downloadedArtifact = jenkinsService.downloadArtifact(
+                        task.getJenkinsUrl(),
+                        task.getJenkinsJobName(),
+                        buildNumber,
+                        task.getJenkinsArtifactPath(),
+                        task.getJenkinsUser(),
+                        task.getJenkinsToken()
+                );
+                log.info("Jenkins artifact downloaded: {}", downloadedArtifact.getAbsolutePath());
+                artifactService.registerArtifact(downloadedArtifact);
+            } catch (RuntimeException e) {
+                // Download failed, fail the whole deployment
+                history.setStatus("failed");
+                history.setCompletedAt(LocalDateTime.now());
+                history.setErrorMessage("Failed to download artifact from Jenkins: " + e.getMessage());
+                history.setLogs("Jenkins download failed: " + e.getMessage());
+                deployHistoryMapper.insert(history);
+                alertService.sendFailureAlert(history, Collections.singletonList(
+                        new DeployResult("jenkins", false, e.getMessage())
+                ));
+                return;
+            }
+        }
+
         List<CompletableFuture<DeployResult>> futures = new ArrayList<>();
 
         // Deploy to all servers in parallel
         for (Server server : servers) {
+            final File artifact = downloadedArtifact;
             CompletableFuture<DeployResult> future = CompletableFuture.supplyAsync(() -> {
-                return deployToServer(history, task, server, params);
+                return deployToServer(history, task, server, params, artifact);
             }, executorService);
             futures.add(future);
         }
@@ -71,28 +124,32 @@ public class DeployService {
             }
         }
 
-        // Update history
-        history.setStatus(allSuccess ? "success" : "failed");
-        history.setCompletedAt(LocalDateTime.now());
+         // Update history (already inserted by controller with status 'running')
+         history.setStatus(allSuccess ? "success" : "failed");
+         history.setCompletedAt(LocalDateTime.now());
 
-        StringBuilder logs = new StringBuilder();
-        for (DeployResult result : results) {
-            logs.append(String.format("Server: %s, Success: %s, Message: %s\n",
-                    result.getServerName(), result.isSuccess(), result.getMessage()));
-        }
-        history.setLogs(logs.toString());
+         StringBuilder logs = new StringBuilder();
+         for (DeployResult result : results) {
+             logs.append(String.format("Server: %s, Success: %s, Message: %s\n",
+                     result.getServerName(), result.isSuccess(), result.getMessage()));
+         }
+         if (downloadedArtifact != null) {
+             logs.insert(0, String.format("Downloaded artifact from Jenkins: %s (%d bytes)\n",
+                     downloadedArtifact.getName(), downloadedArtifact.length()));
+         }
+         history.setLogs(logs.toString());
 
-        if (!allSuccess) {
-            StringBuilder errorMsg = new StringBuilder("Failed servers: ");
-            for (DeployResult result : results) {
-                if (!result.isSuccess()) {
-                    errorMsg.append(result.getServerName()).append(": ").append(result.getMessage()).append("; ");
-                }
-            }
-            history.setErrorMessage(errorMsg.toString());
-        }
+         if (!allSuccess) {
+             StringBuilder errorMsg = new StringBuilder("Failed servers: ");
+             for (DeployResult result : results) {
+                 if (!result.isSuccess()) {
+                     errorMsg.append(result.getServerName()).append(": ").append(result.getMessage()).append("; ");
+                 }
+             }
+             history.setErrorMessage(errorMsg.toString());
+         }
 
-        deployHistoryMapper.insert(history);
+         deployHistoryMapper.update(history);
 
         // Send alert on failure
         if (!allSuccess) {
@@ -102,10 +159,36 @@ public class DeployService {
         log.info("Deployment {} completed with status: {}", history.getId(), history.getStatus());
     }
 
-    private DeployResult deployToServer(DeployHistory history, Task task, Server server, Map<String, String> params) {
+    private DeployResult deployToServer(DeployHistory history, Task task, Server server, Map<String, String> params, File jenkinsArtifact) {
         String serverName = server.getName();
         try {
             log.info("Deploying to server: {}", serverName);
+
+            // If we have a Jenkins artifact, upload it to the agent
+            if (jenkinsArtifact != null) {
+                // Extract original filename (strip the {job}-{build}- prefix)
+                String filename = jenkinsArtifact.getName();
+                int lastDash = jenkinsArtifact.getName().lastIndexOf('-');
+                if (lastDash >= 0 && lastDash < jenkinsArtifact.getName().length() - 1) {
+                    filename = jenkinsArtifact.getName().substring(lastDash + 1);
+                }
+
+                boolean uploaded = fileTransferService.uploadFileToAgent(
+                        server.getHost(), server.getPort(), server.getAgentToken(),
+                        jenkinsArtifact, filename
+                );
+
+                if (!uploaded) {
+                    log.error("Failed to upload artifact to agent {}", serverName);
+                    return new DeployResult(serverName, false, "Failed to upload artifact to agent");
+                }
+
+                // Add artifact filename to params for deploy step
+                if (params == null) {
+                    params = new HashMap<>();
+                }
+                params.put("artifactFilename", filename);
+            }
 
             // Parse task steps
             List<Map<String, Object>> steps = objectMapper.readValue(
@@ -124,6 +207,7 @@ public class DeployService {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
             String url = String.format("http://%s:%d/api/task/execute", server.getHost(), server.getPort());
+            log.info("[Deploy] POST {} task={} steps={} params={}", url, task.getName(), steps.size(), request.get("params"));
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
@@ -144,6 +228,7 @@ public class DeployService {
     private DeployResult pollTaskStatus(Server server, String taskId, String serverName) {
         String url = String.format("http://%s:%d/api/task/%s/status",
                 server.getHost(), server.getPort(), taskId);
+        log.info("[Deploy] Polling task status url={} taskId={}", url, taskId);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + server.getAgentToken());

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +54,30 @@ public class ArtifactService {
             Files.deleteIfExists(filePath);
         } catch (IOException e) {
             // Log error but don't fail
+        }
+    }
+
+    /**
+     * Register an already-downloaded file (e.g. from Jenkins) as an artifact in DB.
+     * Skips insertion if a record with the same file path already exists.
+     */
+    public Artifact registerArtifact(File file) {
+        try {
+            String absPath = file.getAbsolutePath();
+            Optional<Artifact> existing = artifactMapper.findByFilePath(absPath);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+            Artifact artifact = new Artifact();
+            artifact.setFilename(file.getName());
+            artifact.setFilePath(absPath);
+            artifact.setFileSize(file.length());
+            artifact.setMd5(calculateMD5(file.toPath()));
+            artifactMapper.insert(artifact);
+            return artifact;
+        } catch (Exception e) {
+            // Don't fail deployment because of DB registration
+            return null;
         }
     }
 
