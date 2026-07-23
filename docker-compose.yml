@@ -1,0 +1,31 @@
+services:
+  redeploy-server:
+    image: pengfei2022/redeploy-server:latest
+    container_name: redeploy-server
+    restart: unless-stopped
+    ports:
+      - "9006:9006"
+    environment:
+      TZ: Asia/Shanghai
+      # 运维Token（必填）—— 未设置时 compose 会拒绝启动
+      REDEPLOY_ADMIN_TOKEN: ${REDEPLOY_ADMIN_TOKEN:?REDEPLOY_ADMIN_TOKEN 必须在 .env 或环境变量中设置}
+      # SSH 加密密钥（可选，为空则容器首启自动生成并打印到日志）
+      REDEPLOY_SSH_ENCRYPTION_KEY: ${REDEPLOY_SSH_ENCRYPTION_KEY:-}
+      # 钉钉告警（可选）
+      REDEPLOY_DINGTALK_ENABLED: ${REDEPLOY_DINGTALK_ENABLED:-false}
+      REDEPLOY_DINGTALK_WEBHOOK_URL: ${REDEPLOY_DINGTALK_WEBHOOK_URL:-}
+      REDEPLOY_DINGTALK_NOTIFY_MODE: ${REDEPLOY_DINGTALK_NOTIFY_MODE:-failure-only}
+      # 保留策略（可选）
+      REDEPLOY_LOG_RETENTION_DAYS: ${REDEPLOY_LOG_RETENTION_DAYS:-7}
+      REDEPLOY_HISTORY_RETENTION_DAYS: ${REDEPLOY_HISTORY_RETENTION_DAYS:-7}
+      # JVM 参数（可选）
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9006/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

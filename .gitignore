@@ -19,9 +19,15 @@ agent/deploy-agent
 agent/deploy-agent-linux-amd64
 agent/deploy-agent-linux-arm64
 
+# Cross-compiled agent binaries staged for server image
+server/data/agents/deploy-agent-*
+
 # Runtime data
 data/
 logs/
+
+# Docker compose env file (user-local secrets)
+.env
 
 # OS files
 .DS_Store

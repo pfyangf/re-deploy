@@ -26,24 +26,25 @@ mybatis:
 # Re-Deploy Configuration
 redeploy:
   # 运维Token（用于Jenkins等自动化场景）
-  admin-token: baoshun123
+  # 生产部署 MUST 通过 REDEPLOY_ADMIN_TOKEN 覆盖，默认 changeme 仅用于本地调试
+  admin-token: ${REDEPLOY_ADMIN_TOKEN:changeme}
   # 文件存储路径
-  upload-dir: ./data/uploads
+  upload-dir: ${REDEPLOY_UPLOAD_DIR:./data/uploads}
   # Agent下载目录
-  agent-dir: ./data/agents
+  agent-dir: ${REDEPLOY_AGENT_DIR:./data/agents}
   # 日志保留天数
-  log-retention-days: 7
+  log-retention-days: ${REDEPLOY_LOG_RETENTION_DAYS:7}
   # 部署历史保留天数
-  history-retention-days: 7
+  history-retention-days: ${REDEPLOY_HISTORY_RETENTION_DAYS:7}
   # SSH加密密钥（Base64编码，16/24/32字节对应AES-128/192/256）
   # 如果留空，启动时会自动生成并打印到日志，请务必保存
-  ssh-encryption-key: 0reB+fd4I9RrIaQTIcoJ3A==
+  ssh-encryption-key: ${REDEPLOY_SSH_ENCRYPTION_KEY:}
   # 钉钉Webhook配置
   dingtalk:
-    enabled: false
-    webhook-url: https://oapi.dingtalk.com/robot/send?access_token=your-token
+    enabled: ${REDEPLOY_DINGTALK_ENABLED:false}
+    webhook-url: ${REDEPLOY_DINGTALK_WEBHOOK_URL:}
     # 通知模式: failure-only, all
-    notify-mode: failure-only
+    notify-mode: ${REDEPLOY_DINGTALK_NOTIFY_MODE:failure-only}
 
 logging:
   level:

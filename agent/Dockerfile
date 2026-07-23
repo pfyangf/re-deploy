@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.6
+# syntax=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/docker/dockerfile:1.6
 
 # ---- build stage ----
 FROM golang:1.21-alpine AS builder

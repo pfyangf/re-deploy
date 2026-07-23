@@ -14,11 +14,27 @@ Two independent components; there is **no root build file**. Build them separate
 
 ## Build / Run
 
+**推荐入口**（一键完成 agent 交叉编译 + server 打包 + Docker 镜像）：
+
+```bash
+# 本地构建（不推送 Docker Hub、不改 git）
+./scripts/build.sh                     # Linux/macOS
+./scripts/build.ps1                    # Windows
+
+# 正式发版（bump pom + build + push Docker Hub multi-arch + git commit/tag/push）
+./scripts/release.sh patch|minor|major|<X.Y.Z>
+./scripts/release.ps1 patch|minor|major|<X.Y.Z>
+```
+
+详细流程 & 前置条件（`docker login`、`docker buildx`、环境变量清单）见 [`docs/guide/deployment.md`](docs/guide/deployment.md)。
+
+**手工方式**（不用脚本，用于快速调试）：
+
 ```bash
 # Server (from server/)
-mvn package                        # produces target/redeploy-server-1.0.0.jar
+mvn package                        # produces target/redeploy-server-<version>.jar
 mvn spring-boot:run                # dev run
-java -jar target/redeploy-server-1.0.0.jar
+java -jar target/redeploy-server-<version>.jar
 
 # Agent (from agent/)
 go build -o deploy-agent ./cmd/agent
@@ -28,7 +44,9 @@ GOOS=linux GOARCH=amd64 go build -o deploy-agent-linux-amd64 ./cmd/agent
 GOOS=linux GOARCH=arm64 go build -o deploy-agent-linux-arm64 ./cmd/agent
 ```
 
-**Non-obvious**: `AgentDownloadController` serves binaries from `redeploy.agent-dir` (default `./data/agents/` relative to server CWD). After cross-compiling, drop binaries there with exact names `deploy-agent-<os>-<arch>` (e.g. `deploy-agent-linux-amd64`) or the download 404s. There is no automated pipeline for this.
+**Non-obvious**: `AgentDownloadController` 从 `redeploy.agent-dir`（默认 `./data/agents/` 相对于 server CWD）读取二进制。手工交叉编译后请以精确名 `deploy-agent-<os>-<arch>`（如 `deploy-agent-linux-amd64`）放入该目录，否则下载 404。`scripts/build.{ps1,sh}` 会自动处理这一步。
+
+**版本号真源**：`server/pom.xml` `<version>`。master HEAD 始终为 `X.Y.Z-SNAPSHOT`；release 脚本负责去 SNAPSHOT → 打 tag → bump 回 SNAPSHOT。所有 Docker 镜像 tag 与 Git tag 都从 pom 派生，不允许硬编码。
 
 ## Tests / Lint
 

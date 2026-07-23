@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# Agent tooling (not shipped)
+.agents
+.archon
+.claude
+.opencode
+
+# Docs / spec (not needed in image)
+docs
+openspec
+README.md
+AGENTS.md
+**/*.md
+
+# Scripts (build 在宿主机执行，不需要进镜像)
+scripts
+
+# Agent source (server 镜像只带交叉编译后的二进制，不带 Go 源)
+agent
+
+# Server build 中间产物（保留 target/*.jar 让 COPY 生效）
+server/data/redeploy.db
+server/data/redeploy.db-*
+server/data/uploads
+server/logs
+
+# 根目录 compose 挂载点（本地开发用）
+data
+logs
+
+# 环境变量文件（含密钥）
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

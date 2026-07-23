@@ -23,6 +23,8 @@ Re-Deploy 是一个轻量级的自动化部署中间件，用于解决 Jenkins �
 
 ## 快速开始
 
+> 生产部署建议直接看 [构建与部署指南](docs/guide/deployment.md)（Docker Compose 一键起）。以下为本地开发运行方式。
+
 ### 1. 启动服务端
 
 ```bash
@@ -95,6 +97,7 @@ curl -X POST http://YOUR_SERVER_IP:9006/api/deploy \
 
 ## 文档
 
+- [构建与部署指南](docs/guide/deployment.md)
 - [快速开始](docs/guide/quick-start.md)
 - [安装部署](docs/guide/installation.md)
 - [配置说明](docs/guide/configuration.md)
