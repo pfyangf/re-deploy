@@ -102,7 +102,7 @@ mvn -f "$REPO_ROOT/server/pom.xml" -q versions:set -DnewVersion="$TARGET" -Dgene
 
 # ---- Step 4: 构建 + 推送 --------------------------------------------------
 log "调用 build.sh --version $TARGET --platforms linux/amd64,linux/arm64 --push"
-bash "$BUILD_SCRIPT" --version "$TARGET" --platforms "linux/amd64,linux/arm64" --push
+sh "$BUILD_SCRIPT" --version "$TARGET" --platforms "linux/amd64,linux/arm64" --push
 
 # ---- Step 5: 提交 release commit + tag ------------------------------------
 log "git commit release: v$TARGET"
