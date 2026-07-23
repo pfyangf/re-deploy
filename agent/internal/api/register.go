@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -53,15 +53,30 @@ func RegisterWithServer(cfg *config.Config) error {
 	url := fmt.Sprintf("%s/api/agents/register", cfg.ServerURL)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
+		slog.Error("agent register failed",
+			"event", "agent.register.error",
+			"server_url", cfg.ServerURL,
+			"error", err.Error(),
+		)
 		return fmt.Errorf("failed to register with server: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("agent register failed",
+			"event", "agent.register.error",
+			"server_url", cfg.ServerURL,
+			"status", resp.StatusCode,
+		)
 		return fmt.Errorf("registration failed with status: %d", resp.StatusCode)
 	}
 
-	log.Println("Successfully registered with server")
+	slog.Info("agent registered",
+		"event", "agent.register.ok",
+		"hostname", hostname,
+		"ip", ip,
+		"port", cfg.Port,
+	)
 	return nil
 }
 
@@ -85,20 +100,31 @@ func sendHeartbeat(cfg *config.Config, hostname, ip string) {
 
 	jsonData, err := json.Marshal(req)
 	if err != nil {
-		log.Printf("Failed to marshal heartbeat: %v", err)
+		slog.Error("heartbeat marshal failed",
+			"event", "agent.heartbeat.error",
+			"error", err.Error(),
+		)
 		return
 	}
 
 	url := fmt.Sprintf("%s/api/agents/heartbeat", cfg.ServerURL)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to send heartbeat: %v", err)
+		slog.Error("heartbeat send failed",
+			"event", "agent.heartbeat.error",
+			"server_url", cfg.ServerURL,
+			"error", err.Error(),
+		)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Heartbeat failed with status: %d", resp.StatusCode)
+		slog.Error("heartbeat non-ok status",
+			"event", "agent.heartbeat.error",
+			"server_url", cfg.ServerURL,
+			"status", resp.StatusCode,
+		)
 	}
 }
 

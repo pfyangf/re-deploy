@@ -3,12 +3,13 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/redeploy/agent/internal/config"
+	"github.com/redeploy/agent/internal/logging"
 )
 
 type Server struct {
@@ -89,8 +90,15 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
-		next.ServeHTTP(w, r)
+		reqID := uuid.New().String()
+		ctx := logging.WithRequestID(r.Context(), reqID)
+		logging.FromContext(ctx).Info("http request",
+			"event", "http.request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

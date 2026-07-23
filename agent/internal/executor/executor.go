@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/redeploy/agent/internal/logging"
 )
 
 type Executor struct {
@@ -19,19 +21,25 @@ func NewExecutor(dataDir string) *Executor {
 	return &Executor{dataDir: dataDir}
 }
 
-func (e *Executor) ExecuteShell(command string, timeout int) (string, int, error) {
+func (e *Executor) ExecuteShell(ctx context.Context, command string, timeout int) (string, int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if timeout <= 0 {
 		timeout = 60 // Default 60 seconds
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	logger := logging.FromContext(ctx)
+	logger.Debug("shell exec start", "event", "executor.shell.start", "command", command, "timeout", timeout)
+
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	var cmd *exec.Cmd
 	if os.Getenv("GOOS") == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		cmd = exec.CommandContext(runCtx, "cmd", "/C", command)
 	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		cmd = exec.CommandContext(runCtx, "sh", "-c", command)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -42,8 +50,9 @@ func (e *Executor) ExecuteShell(command string, timeout int) (string, int, error
 
 	output := stdout.String() + stderr.String()
 
-	if ctx.Err() == context.DeadlineExceeded {
-		return output, -1, fmt.Errorf("command timed out after %d seconds", timeout)
+	if runCtx.Err() == context.DeadlineExceeded {
+		logger.Debug("shell exec timeout", "event", "executor.shell.timeout", "timeout", timeout, "output_bytes", len(output))
+		return strings.TrimSpace(output), -1, fmt.Errorf("command timed out after %d seconds", timeout)
 	}
 
 	exitCode := 0
@@ -51,14 +60,16 @@ func (e *Executor) ExecuteShell(command string, timeout int) (string, int, error
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return output, -1, err
+			logger.Debug("shell exec error", "event", "executor.shell.error", "error", err.Error())
+			return strings.TrimSpace(output), -1, err
 		}
 	}
 
+	logger.Debug("shell exec end", "event", "executor.shell.end", "exit_code", exitCode, "output_bytes", len(output))
 	return strings.TrimSpace(output), exitCode, nil
 }
 
-func (e *Executor) ExecuteScript(script string, params map[string]string, timeout int) (string, int, error) {
+func (e *Executor) ExecuteScript(ctx context.Context, script string, params map[string]string, timeout int) (string, int, error) {
 	// Replace parameters in script
 	for key, value := range params {
 		script = strings.ReplaceAll(script, fmt.Sprintf("{{%s}}", key), value)
@@ -76,5 +87,5 @@ func (e *Executor) ExecuteScript(script string, params map[string]string, timeou
 	}
 	defer os.Remove(scriptFile)
 
-	return e.ExecuteShell(fmt.Sprintf("bash %s", scriptFile), timeout)
+	return e.ExecuteShell(ctx, fmt.Sprintf("bash %s", scriptFile), timeout)
 }

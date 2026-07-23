@@ -8,7 +8,8 @@ A: 检查以下几点：
 1. 确认网络连接正常
 2. 确认服务端已启动
 3. 检查是否有 sudo 权限
-4. 查看错误日志：`journalctl -u deploy-agent -n 50`
+4. 查看安装 / 启动日志：`journalctl -u deploy-agent -n 50`
+5. 查看运行时日志：`tail -f /opt/deploy-agent/log/agent-$(date +%F).log`
 
 ### Q: 如何在 ARM 架构服务器上安装？
 
@@ -32,8 +33,10 @@ journalctl -u deploy-agent -n 50 | grep "Agent Token"
 
 A: 
 1. 查看部署历史页面的详细日志
-2. 检查 Agent 日志：`journalctl -u deploy-agent -f`
-3. 检查服务端日志：`./logs/redeploy-server.log`
+2. 查看 Agent 运行时日志（JSON，含 `task_id`）：`tail -f /opt/deploy-agent/log/agent-$(date +%F).log`
+3. 用 `task_id` 过滤某次部署的完整轨迹：`grep '"task_id":"<id>"' /opt/deploy-agent/log/agent-$(date +%F).log`
+4. 查看 Agent 生命周期日志：`journalctl -u deploy-agent -f`
+5. 查看服务端日志：`./logs/redeploy-server.log`
 
 ### Q: 如何配置钉钉告警？
 

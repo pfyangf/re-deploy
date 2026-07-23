@@ -1,14 +1,14 @@
 package cleaner
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 type Cleaner struct {
-	dataDir    string
+	dataDir       string
 	retentionDays int
 }
 
@@ -32,7 +32,7 @@ func (c *Cleaner) StartCleanupTask() {
 }
 
 func (c *Cleaner) cleanup() {
-	log.Println("Starting cleanup task...")
+	slog.Info("data cleanup start", "event", "cleaner.start", "retention_days", c.retentionDays)
 
 	// Cleanup old uploads
 	cleanupDir(filepath.Join(c.dataDir, "uploads"), c.retentionDays)
@@ -43,10 +43,7 @@ func (c *Cleaner) cleanup() {
 	// Cleanup old scripts
 	cleanupDir(filepath.Join(c.dataDir, "scripts"), c.retentionDays)
 
-	// Cleanup old logs
-	cleanupDir(filepath.Join(c.dataDir, "logs"), c.retentionDays)
-
-	log.Println("Cleanup task completed")
+	slog.Info("data cleanup done", "event", "cleaner.done")
 }
 
 func cleanupDir(dir string, retentionDays int) {
@@ -62,9 +59,9 @@ func cleanupDir(dir string, retentionDays int) {
 		}
 
 		if !info.IsDir() && info.ModTime().Before(threshold) {
-			log.Printf("Deleting old file: %s", path)
+			slog.Debug("cleaner deleting file", "event", "cleaner.delete", "path", path)
 			if err := os.Remove(path); err != nil {
-				log.Printf("Failed to delete file %s: %v", path, err)
+				slog.Error("cleaner delete failed", "event", "cleaner.delete.error", "path", path, "error", err.Error())
 			}
 		}
 
@@ -72,6 +69,6 @@ func cleanupDir(dir string, retentionDays int) {
 	})
 
 	if err != nil {
-		log.Printf("Error cleaning directory %s: %v", dir, err)
+		slog.Error("cleaner walk failed", "event", "cleaner.walk.error", "dir", dir, "error", err.Error())
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/redeploy/agent/internal/logging"
 )
 
 type UploadSession struct {
@@ -77,9 +79,22 @@ func (s *Server) uploadInitHandler(w http.ResponseWriter, r *http.Request) {
 	// Create upload directory
 	uploadDir := filepath.Join(s.cfg.DataDir, "uploads", session.ID)
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		logging.FromContext(logging.WithUploadID(r.Context(), session.ID)).Error(
+			"upload init failed",
+			"event", "upload.init.error",
+			"filename", req.Filename,
+			"error", err.Error(),
+		)
 		writeError(w, http.StatusInternalServerError, "Failed to create upload directory")
 		return
 	}
+
+	logging.FromContext(logging.WithUploadID(r.Context(), session.ID)).Info(
+		"upload init",
+		"event", "upload.init",
+		"filename", req.Filename,
+		"size", req.FileSize,
+	)
 
 	writeJSON(w, http.StatusOK, UploadInitResponse{
 		UploadID:  session.ID,
@@ -147,6 +162,9 @@ func (s *Server) uploadCompleteHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	uploadID := vars["uploadId"]
 
+	uploadCtx := logging.WithUploadID(r.Context(), uploadID)
+	uploadLogger := logging.FromContext(uploadCtx)
+
 	sessionsMu.RLock()
 	session, exists := uploadSessions[uploadID]
 	sessionsMu.RUnlock()
@@ -161,24 +179,48 @@ func (s *Server) uploadCompleteHandler(w http.ResponseWriter, r *http.Request) {
 	finalPath := filepath.Join(s.cfg.DataDir, "artifacts", session.Filename)
 
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
+		uploadLogger.Error("upload complete failed",
+			"event", "upload.complete.error",
+			"filename", session.Filename,
+			"error", err.Error(),
+		)
 		writeError(w, http.StatusInternalServerError, "Failed to create artifacts directory")
 		return
 	}
 
 	if err := reassembleFile(uploadDir, finalPath, len(session.Received)); err != nil {
+		uploadLogger.Error("upload reassemble failed",
+			"event", "upload.complete.error",
+			"filename", session.Filename,
+			"error", err.Error(),
+		)
 		writeError(w, http.StatusInternalServerError, "Failed to reassemble file")
 		return
 	}
 
+	md5Ok := true
 	// Verify MD5
 	if session.MD5 != "" {
 		calculatedMD5, err := calculateFileMD5(finalPath)
 		if err != nil {
+			uploadLogger.Error("upload md5 calc failed",
+				"event", "upload.complete.error",
+				"filename", session.Filename,
+				"error", err.Error(),
+			)
 			writeError(w, http.StatusInternalServerError, "Failed to calculate MD5")
 			return
 		}
 
 		if calculatedMD5 != session.MD5 {
+			md5Ok = false
+			uploadLogger.Error("upload md5 mismatch",
+				"event", "upload.complete",
+				"filename", session.Filename,
+				"md5_ok", false,
+				"expected", session.MD5,
+				"got", calculatedMD5,
+			)
 			writeError(w, http.StatusBadRequest, "MD5 mismatch")
 			return
 		}
@@ -190,6 +232,13 @@ func (s *Server) uploadCompleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Cleanup chunks
 	os.RemoveAll(uploadDir)
+
+	uploadLogger.Info("upload complete",
+		"event", "upload.complete",
+		"filename", session.Filename,
+		"size", session.FileSize,
+		"md5_ok", md5Ok,
+	)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "complete",
@@ -261,6 +310,10 @@ func cleanupExpiredSessions() {
 		if time.Since(session.StartTime) > time.Hour {
 			delete(uploadSessions, id)
 			os.RemoveAll(filepath.Join("./data/uploads", id))
+			slog.Info("upload session expired",
+				"event", "upload.session.expire",
+				"upload_id", id,
+			)
 		}
 	}
 }

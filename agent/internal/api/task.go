@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,16 +15,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/redeploy/agent/internal/executor"
+	"github.com/redeploy/agent/internal/logging"
 )
 
 type TaskExecution struct {
-	ID        string              `json:"id"`
-	TaskName  string              `json:"task_name"`
-	Status    string              `json:"status"`
-	Steps     []StepExecution     `json:"steps"`
-	StartTime time.Time           `json:"start_time"`
-	EndTime   *time.Time          `json:"end_time,omitempty"`
-	Error     string              `json:"error,omitempty"`
+	ID        string          `json:"id"`
+	TaskName  string          `json:"task_name"`
+	Status    string          `json:"status"`
+	Steps     []StepExecution `json:"steps"`
+	StartTime time.Time       `json:"start_time"`
+	EndTime   *time.Time      `json:"end_time,omitempty"`
+	Error     string          `json:"error,omitempty"`
 }
 
 type StepExecution struct {
@@ -36,8 +39,8 @@ type StepExecution struct {
 }
 
 type TaskExecuteRequest struct {
-	TaskName string          `json:"task_name"`
-	Steps    []StepDef       `json:"steps"`
+	TaskName string            `json:"task_name"`
+	Steps    []StepDef         `json:"steps"`
 	Params   map[string]string `json:"params"`
 }
 
@@ -74,8 +77,14 @@ func (s *Server) taskExecuteHandler(w http.ResponseWriter, r *http.Request) {
 	taskExecutions[execution.ID] = execution
 	tasksMu.Unlock()
 
+	// Derive task-scoped context from the request context (carries request_id)
+	taskCtx := logging.WithTaskID(context.Background(), execution.ID)
+	if reqID := logging.RequestIDFromContext(r.Context()); reqID != "" {
+		taskCtx = logging.WithRequestID(taskCtx, reqID)
+	}
+
 	// Execute task in background
-	go s.executeTask(execution, req.Steps, req.Params)
+	go s.executeTask(taskCtx, execution, req.Steps, req.Params)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"task_id": execution.ID,
@@ -117,20 +126,38 @@ func (s *Server) taskCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.FromContext(logging.WithTaskID(r.Context(), taskID)).Info(
+		"task cancelled",
+		"event", "task.cancel",
+	)
+
 	writeJSON(w, http.StatusOK, map[string]string{
 		"task_id": taskID,
 		"status":  execution.Status,
 	})
 }
 
-func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params map[string]string) {
-	executor := executor.NewExecutor(s.cfg.DataDir)
+func (s *Server) executeTask(ctx context.Context, execution *TaskExecution, steps []StepDef, params map[string]string) {
+	exec := executor.NewExecutor(s.cfg.DataDir)
+	taskLogger := logging.FromContext(ctx)
+	taskStart := time.Now()
+
+	taskLogger.Info("task start",
+		"event", "task.start",
+		"task_name", execution.TaskName,
+		"step_count", len(steps),
+	)
 
 	for i, step := range steps {
 		// Check if task is cancelled
 		tasksMu.RLock()
 		if execution.Status == "cancelled" {
 			tasksMu.RUnlock()
+			taskLogger.Info("task cancelled mid-flight",
+				"event", "task.end",
+				"status", "cancelled",
+				"duration_ms", time.Since(taskStart).Milliseconds(),
+			)
 			return
 		}
 		tasksMu.RUnlock()
@@ -147,15 +174,32 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 		execution.Steps = append(execution.Steps, stepExec)
 		tasksMu.Unlock()
 
+		stepCtx := logging.WithStepIndex(ctx, i)
+		stepLogger := logging.FromContext(stepCtx)
+
+		startAttrs := []any{
+			"event", "task.step.start",
+			"step_name", step.Name,
+			"step_type", step.Type,
+			"timeout", step.Timeout,
+		}
+		if step.Command != "" {
+			startAttrs = append(startAttrs, "command", step.Command)
+		}
+		if step.DeployPath != "" {
+			startAttrs = append(startAttrs, "deploy_path", step.DeployPath)
+		}
+		stepLogger.Info("step start", startAttrs...)
+
 		var output string
 		var exitCode int
 		var err error
 
 		switch step.Type {
 		case "shell", "command":
-			output, exitCode, err = executor.ExecuteShell(step.Command, step.Timeout)
+			output, exitCode, err = exec.ExecuteShell(stepCtx, step.Command, step.Timeout)
 		case "script":
-			output, exitCode, err = executor.ExecuteScript(step.Script, params, step.Timeout)
+			output, exitCode, err = exec.ExecuteScript(stepCtx, step.Script, params, step.Timeout)
 		case "deploy":
 			// Deploy step: copy uploaded artifact to target deployment path
 			artifactFilename, hasArtifact := params["artifactFilename"]
@@ -205,6 +249,25 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 			stepExec.Status = "success"
 		}
 
+		duration := time.Since(stepExec.StartTime)
+		endAttrs := []any{
+			"event", "task.step.end",
+			"step_name", step.Name,
+			"step_type", step.Type,
+			"exit_code", exitCode,
+			"status", stepExec.Status,
+			"duration_ms", duration.Milliseconds(),
+			"output", stepExec.Output,
+		}
+		if err != nil {
+			endAttrs = append(endAttrs, "error", err.Error())
+			stepLogger.Log(stepCtx, slog.LevelError, "step end", endAttrs...)
+		} else if stepExec.Status == "failed" {
+			stepLogger.Log(stepCtx, slog.LevelError, "step end", endAttrs...)
+		} else {
+			stepLogger.Info("step end", endAttrs...)
+		}
+
 		// Update step execution
 		tasksMu.Lock()
 		execution.Steps[i] = stepExec
@@ -216,6 +279,12 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 			execution.Error = fmt.Sprintf("Step '%s' failed: %s", step.Name, stepExec.Output)
 			now := time.Now()
 			execution.EndTime = &now
+			taskLogger.Error("task end",
+				"event", "task.end",
+				"status", "failed",
+				"duration_ms", time.Since(taskStart).Milliseconds(),
+				"error", execution.Error,
+			)
 			return
 		}
 	}
@@ -223,26 +292,31 @@ func (s *Server) executeTask(execution *TaskExecution, steps []StepDef, params m
 	execution.Status = "success"
 	now := time.Now()
 	execution.EndTime = &now
+	taskLogger.Info("task end",
+		"event", "task.end",
+		"status", "success",
+		"duration_ms", time.Since(taskStart).Milliseconds(),
+	)
 }
 
 // copyFile copies a file from src to dst
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
-if err != nil {
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// Create destination directory if needed
+	dstDir := filepath.Dir(dst)
+	os.MkdirAll(dstDir, 0755)
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
 	return err
-}
-defer srcFile.Close()
-
-// Create destination directory if needed
-dstDir := filepath.Dir(dst)
-os.MkdirAll(dstDir, 0755)
-
-dstFile, err := os.Create(dst)
-if err != nil {
-	return err
-}
-defer dstFile.Close()
-
-_, err = io.Copy(dstFile, srcFile)
-return err
 }

@@ -61,7 +61,7 @@ public class AgentDownloadController {
                 "echo \"Detected architecture: $AGENT_ARCH\"\n\n" +
                 "# Create installation directory\n" +
                 "INSTALL_DIR=\"/opt/deploy-agent\"\n" +
-                "sudo mkdir -p $INSTALL_DIR/bin $INSTALL_DIR/conf $INSTALL_DIR/data $INSTALL_DIR/logs\n\n" +
+                "sudo mkdir -p $INSTALL_DIR/bin $INSTALL_DIR/conf $INSTALL_DIR/data $INSTALL_DIR/log\n\n" +
                 "# Download agent binary\n" +
                 "echo \"Downloading agent binary...\"\n" +
                 "sudo curl -fsSL \"$SERVER_URL/api/agent/download/linux/$AGENT_ARCH\" -o $INSTALL_DIR/bin/deploy-agent\n" +
@@ -89,8 +89,9 @@ public class AgentDownloadController {
                 "sudo systemctl enable deploy-agent\n" +
                 "sudo systemctl start deploy-agent\n\n" +
                 "echo \"Installation complete!\"\n" +
-                "echo \"Check logs: journalctl -u deploy-agent -f\"\n" +
-                "echo \"Check status: systemctl status deploy-agent\"\n";
+                "echo \"Lifecycle logs: journalctl -u deploy-agent -f\"\n" +
+                "echo \"Runtime logs:   tail -f $INSTALL_DIR/log/agent-\\$(date +%F).log\"\n" +
+                "echo \"Check status:   systemctl status deploy-agent\"\n";
 
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_PLAIN)

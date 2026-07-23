@@ -60,5 +60,5 @@ Two independent bearer tokens:
 
 - Chinese comments and docstrings are the norm; keep that style when editing existing files.
 - Timezone in Jackson is fixed to `Asia/Shanghai`.
-- Server logs → `./logs/redeploy-server.log`; agent logs → systemd journal (`journalctl -u deploy-agent`).
+- Server logs → `./logs/redeploy-server.log`; agent lifecycle logs → systemd journal (`journalctl -u deploy-agent`); agent **runtime logs** (structured JSON, one line per event, with `task_id` / `step_index` / `upload_id` / `request_id` fields) → `/opt/deploy-agent/log/agent-YYYY-MM-DD.log` (rotated daily, 30-day retention by default; configurable via `log.dir` / `log.level` / `log.max_age_days` in `config.yaml`).
 - When adding a new capability, follow the OpenSpec flow: propose under `openspec/changes/<name>/` first; check `openspec/changes/re-deploy-tool/` for the reference structure.

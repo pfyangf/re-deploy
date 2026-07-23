@@ -26,7 +26,7 @@ mybatis:
 # Re-Deploy Configuration
 redeploy:
   # 运维Token（用于Jenkins等自动化场景）
-  admin-token: re-deploy
+  admin-token: baoshun123
   # 文件存储路径
   upload-dir: ./data/uploads
   # Agent下载目录
