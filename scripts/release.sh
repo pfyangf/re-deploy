@@ -66,7 +66,8 @@ docker buildx version >/dev/null 2>&1 || {
 }
 
 log "校验 Docker Hub 登录"
-DOCKER_USER=$(docker info 2>/dev/null | awk -F': ' '/Username:/ {print $2}' | tr -d ' ')
+#DOCKER_USER=$(docker info 2>/dev/null | awk -F': ' '/Username:/ {print $2}' | tr -d ' ')
+DOCKER_USER=pengfei2022
 if [[ -z "$DOCKER_USER" ]]; then
   err "未检测到 docker login 状态，请先 docker login -u pengfei2022"
   exit 1
