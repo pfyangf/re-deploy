@@ -22,7 +22,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE_REPO="pengfei2022/redeploy-server"
-BUILD_SCRIPT="$REPO_ROOT/scripts/build.sh"
+BUILD_SCRIPT="build.sh"
 
 if [[ $# -ne 1 ]]; then
   echo "用法: $0 <patch|minor|major|X.Y.Z>" >&2
