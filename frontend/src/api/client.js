@@ -33,7 +33,7 @@ api.interceptors.response.use(
 
 export default {
   // Dashboard
-  getServers: () => api.get('/api/servers'),
+  getServers: (params) => api.get('/api/servers', { params }),
   getDeployHistory: () => api.get('/api/deploy/history'),
 
   // Groups
@@ -50,7 +50,7 @@ export default {
   executeDebug: (id, command) => api.post(`/api/servers/${id}/debug/exec`, { command }),
 
   // Tasks
-  getTasks: () => api.get('/api/tasks'),
+  getTasks: (params) => api.get('/api/tasks', { params }),
   createTask: (data) => api.post('/api/tasks', data),
   updateTask: (id, data) => api.put(`/api/tasks/${id}`, data),
   deleteTask: (id) => api.delete(`/api/tasks/${id}`),
@@ -58,6 +58,7 @@ export default {
   // Deploy
   createDeploy: (data) => api.post('/api/deploy', data),
   getDeployDetail: (id) => api.get(`/api/deploy/${id}`),
+  getJenkinsBuildHistory: (taskId) => api.get('/api/deploy/jenkins/builds', { params: { taskId } }),
 
   // Artifacts
   getArtifacts: () => api.get('/api/artifacts'),

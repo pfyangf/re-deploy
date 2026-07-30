@@ -27,7 +27,7 @@ mybatis:
 redeploy:
   # 运维Token（用于Jenkins等自动化场景）
   # 生产部署 MUST 通过 REDEPLOY_ADMIN_TOKEN 覆盖，默认 changeme 仅用于本地调试
-  admin-token: ${REDEPLOY_ADMIN_TOKEN:changeme}
+  admin-token: ${REDEPLOY_ADMIN_TOKEN:baoshun123}
   # 文件存储路径
   upload-dir: ${REDEPLOY_UPLOAD_DIR:./data/uploads}
   # Agent下载目录

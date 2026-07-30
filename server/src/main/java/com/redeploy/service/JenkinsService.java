@@ -7,14 +7,21 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.util.UriComponentsBuilder;
+
 import java.io.File;
 import java.io.FileOutputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class JenkinsService {
@@ -29,6 +36,7 @@ public class JenkinsService {
     private com.redeploy.repository.ArtifactMapper artifactMapper;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public File downloadArtifact(String jenkinsUrl, String jobName, String buildNumber,
                                  String artifactPath, String jenkinsUser, String jenkinsToken) {
@@ -133,6 +141,57 @@ public class JenkinsService {
         } catch (Exception e) {
             log.warn("Error cleaning up old Jenkins artifacts: {}", e.getMessage());
             // Don't fail the download just because cleanup failed
+        }
+    }
+
+    public List<Map<String, Object>> getBuildHistory(String jenkinsUrl, String jobName,
+                                                     String jenkinsUser, String jenkinsToken, int limit) {
+        try {
+            String treeValue = String.format("builds[number,result,timestamp,description]{0,%d}", limit);
+
+            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(jenkinsUrl);
+            for (String segment : jobName.split("/")) {
+                if (!segment.isEmpty()) {
+                    builder.pathSegment(segment);
+                }
+            }
+            builder.path("api/json").queryParam("tree", treeValue);
+            URI uri = builder.build().encode(StandardCharsets.UTF_8).toUri();
+
+            log.info("[Jenkins] GET {} (getBuildHistory) job={}", uri, jobName);
+
+            HttpHeaders headers = new HttpHeaders();
+            if (jenkinsUser != null && jenkinsToken != null) {
+                String auth = jenkinsUser + ":" + jenkinsToken;
+                String encodedAuth = java.util.Base64.getEncoder().encodeToString(auth.getBytes());
+                headers.set("Authorization", "Basic " + encodedAuth);
+            }
+
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    uri, HttpMethod.GET, entity, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                JsonNode root = objectMapper.readTree(response.getBody());
+                JsonNode builds = root.path("builds");
+                List<Map<String, Object>> result = new ArrayList<>();
+                for (JsonNode build : builds) {
+                    result.add(Map.of(
+                            "number", build.path("number").asInt(),
+                            "result", build.path("result").isNull() ? "BUILDING" : build.path("result").asText(),
+                            "timestamp", build.path("timestamp").asLong(),
+                            "description", build.path("description").isNull() ? "" : build.path("description").asText()
+                    ));
+                }
+                return result;
+            }
+
+            throw new RuntimeException("Failed to fetch build history, status: " + response.getStatusCode());
+
+        } catch (Exception e) {
+            log.error("Failed to fetch build history from Jenkins", e);
+            throw new RuntimeException("Failed to fetch build history: " + e.getMessage(), e);
         }
     }
 

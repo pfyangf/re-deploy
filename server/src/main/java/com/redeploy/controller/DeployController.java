@@ -7,6 +7,7 @@ import com.redeploy.repository.DeployHistoryMapper;
 import com.redeploy.repository.ServerMapper;
 import com.redeploy.repository.TaskMapper;
 import com.redeploy.service.DeployService;
+import com.redeploy.service.JenkinsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +31,9 @@ public class DeployController {
 
     @Autowired
     private DeployService deployService;
+
+    @Autowired
+    private JenkinsService jenkinsService;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> triggerDeploy(@RequestBody DeployRequest request) {
@@ -116,6 +120,34 @@ public class DeployController {
                     return ResponseEntity.badRequest().body(Map.of("error", "Deploy is not running"));
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/jenkins/builds")
+    public ResponseEntity<?> getJenkinsBuilds(
+            @RequestParam Long taskId,
+            @RequestParam(defaultValue = "20") int limit) {
+        Task task = taskMapper.findById(taskId).orElse(null);
+        if (task == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Task not found"));
+        }
+        if (task.getJenkinsEnabled() == null || !task.getJenkinsEnabled()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Jenkins is not enabled for this task"));
+        }
+        if (task.getJenkinsUrl() == null || task.getJenkinsJobName() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Jenkins configuration is incomplete"));
+        }
+        try {
+            List<Map<String, Object>> builds = jenkinsService.getBuildHistory(
+                    task.getJenkinsUrl(),
+                    task.getJenkinsJobName(),
+                    task.getJenkinsUser(),
+                    task.getJenkinsToken(),
+                    limit
+            );
+            return ResponseEntity.ok(builds);
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", "Failed to fetch builds from Jenkins: " + e.getMessage()));
+        }
     }
 
     @PostMapping("/cleanup")

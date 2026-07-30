@@ -1,9 +1,9 @@
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api/client'
 import { ElMessage } from 'element-plus'
-import { Promotion } from '@element-plus/icons-vue'
+import { Promotion, Refresh } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const tasks = ref([])
@@ -12,12 +12,18 @@ const groups = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 
+const selectedGroupId = ref(null)
+
 const form = ref({
   taskId: '',
   serverIds: [],
   version: '',
   jenkinsBuildNumber: ''
 })
+
+const buildHistoryVisible = ref(false)
+const buildHistoryLoading = ref(false)
+const buildHistory = ref([])
 
 // Get selected task object
 const selectedTask = computed(() => {
@@ -28,6 +34,15 @@ const selectedTask = computed(() => {
 // Check if selected task has Jenkins enabled
 const showJenkinsBuildNumber = computed(() => {
   return selectedTask.value && selectedTask.value.jenkinsEnabled
+})
+
+const isAllGroups = computed(() => selectedGroupId.value === null)
+
+const groupOptions = computed(() => {
+  return [
+    { id: null, name: '全部分组' },
+    ...groups.value
+  ]
 })
 
 function getGroupName(groupId) {
@@ -47,23 +62,94 @@ const groupedServers = computed(() => {
   return grouped
 })
 
-async function loadData() {
+async function loadGroups() {
+  try {
+    const res = await api.getGroups()
+    groups.value = res || []
+  } catch (error) {
+    ElMessage.error('加载分组失败')
+    console.error(error)
+  }
+}
+
+async function loadTasksAndServers() {
   loading.value = true
   try {
-    const [tasksRes, serversRes, groupsRes] = await Promise.all([
-      api.getTasks(),
-      api.getServers(),
-      api.getGroups()
+    const params = isAllGroups.value ? {} : { groupId: selectedGroupId.value }
+    const [tasksRes, serversRes] = await Promise.all([
+      api.getTasks(params),
+      api.getServers(params)
     ])
     tasks.value = tasksRes || []
     servers.value = serversRes || []
-    groups.value = groupsRes || []
   } catch (error) {
     ElMessage.error('加载数据失败')
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+async function loadData() {
+  await loadGroups()
+  await loadTasksAndServers()
+}
+
+function onGroupChange() {
+  form.value.taskId = ''
+  form.value.serverIds = []
+  buildHistoryVisible.value = false
+  buildHistory.value = []
+  loadTasksAndServers()
+}
+
+async function fetchBuildHistory() {
+  if (!selectedTask.value) return
+  buildHistoryLoading.value = true
+  buildHistoryVisible.value = true
+  buildHistory.value = []
+  try {
+    const res = await api.getJenkinsBuildHistory(selectedTask.value.id)
+    buildHistory.value = res || []
+  } catch (error) {
+    ElMessage.error('拉取构建历史失败')
+    console.error(error)
+  } finally {
+    buildHistoryLoading.value = false
+  }
+}
+
+function selectBuild(build) {
+  form.value.jenkinsBuildNumber = String(build.number)
+  buildHistoryVisible.value = false
+}
+
+function formatBuildTime(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins} 分钟前`
+  if (diffHours < 24) return `${diffHours} 小时前`
+  if (diffDays < 7) return `${diffDays} 天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
+function getResultTagType(result) {
+  if (!result || result === 'BUILDING') return 'warning'
+  if (result === 'SUCCESS') return 'success'
+  return 'danger'
+}
+
+function getResultText(result) {
+  if (!result || result === 'BUILDING') return '构建中'
+  if (result === 'SUCCESS') return '成功'
+  if (result === 'FAILURE') return '失败'
+  return result
 }
 
 async function handleSubmit() {
@@ -119,6 +205,22 @@ onMounted(() => {
 
     <el-card shadow="never" class="form-card">
       <el-form :model="form" label-width="100px" label-position="right">
+        <el-form-item label="选择分组">
+          <el-select
+            v-model="selectedGroupId"
+            placeholder="请选择分组"
+            style="width: 100%; max-width: 300px"
+            @change="onGroupChange"
+          >
+            <el-option
+              v-for="group in groupOptions"
+              :key="group.id ?? 'all'"
+              :label="group.name"
+              :value="group.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="选择任务" required>
           <el-select
             v-model="form.taskId"
@@ -137,15 +239,30 @@ onMounted(() => {
         <el-form-item label="选择服务器" required>
           <div class="server-groups">
             <template v-if="servers.length">
-              <div
-                v-for="(groupServers, gid) in groupedServers"
-                :key="gid"
-                class="server-group"
-              >
-                <div class="group-title">{{ getGroupName(parseInt(gid)) }}</div>
-                <el-checkbox-group v-model="form.serverIds" class="server-list">
+              <template v-if="isAllGroups">
+                <div
+                  v-for="(groupServers, gid) in groupedServers"
+                  :key="gid"
+                  class="server-group"
+                >
+                  <div class="group-title">{{ getGroupName(parseInt(gid)) }}</div>
+                  <el-checkbox-group v-model="form.serverIds" class="server-list">
+                    <el-checkbox
+                      v-for="server in groupServers"
+                      :key="server.id"
+                      :value="server.id"
+                      class="server-checkbox"
+                    >
+                      {{ server.name }}
+                      <span class="server-host font-mono">({{ server.host }})</span>
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+              </template>
+              <template v-else>
+                <el-checkbox-group v-model="form.serverIds" class="server-list flat-list">
                   <el-checkbox
-                    v-for="server in groupServers"
+                    v-for="server in servers"
                     :key="server.id"
                     :value="server.id"
                     class="server-checkbox"
@@ -154,7 +271,7 @@ onMounted(() => {
                     <span class="server-host font-mono">({{ server.host }})</span>
                   </el-checkbox>
                 </el-checkbox-group>
-              </div>
+              </template>
             </template>
             <el-empty v-else description="暂无服务器" :image-size="80" />
           </div>
@@ -169,12 +286,51 @@ onMounted(() => {
         </el-form-item>
 
         <el-form-item v-if="showJenkinsBuildNumber" label="Jenkins 构建号">
-          <el-input
-            v-model="form.jenkinsBuildNumber"
-            placeholder="例如: 164"
-            style="max-width: 300px"
-          />
-          <div class="hint">输入要部署的构建编号，从 Jenkins 获取</div>
+          <div class="jenkins-build-row">
+            <el-input
+              v-model="form.jenkinsBuildNumber"
+              placeholder="例如: 164"
+              style="max-width: 300px"
+            />
+            <el-popover
+              v-model:visible="buildHistoryVisible"
+              placement="bottom-start"
+              trigger="manual"
+              :width="400"
+            >
+              <template #reference>
+                <el-button :icon="Refresh" :loading="buildHistoryLoading" @click="fetchBuildHistory">
+                  拉取
+                </el-button>
+              </template>
+              <div class="build-history-panel">
+                <div class="build-history-title">构建历史</div>
+                <div v-if="buildHistoryLoading" class="build-history-loading">
+                  <el-icon class="is-loading"><Refresh /></el-icon>
+                  <span>加载中...</span>
+                </div>
+                <div v-else-if="buildHistory.length === 0" class="build-history-empty">
+                  暂无构建记录
+                </div>
+                <div v-else class="build-history-list">
+                  <div
+                    v-for="build in buildHistory"
+                    :key="build.number"
+                    class="build-history-item"
+                    @click="selectBuild(build)"
+                  >
+                    <span class="build-number">#{{ build.number }}</span>
+                    <el-tag :type="getResultTagType(build.result)" size="small">
+                      {{ getResultText(build.result) }}
+                    </el-tag>
+                    <span class="build-time">{{ formatBuildTime(build.timestamp) }}</span>
+                    <span v-if="build.description" class="build-desc">{{ build.description }}</span>
+                  </div>
+                </div>
+              </div>
+            </el-popover>
+          </div>
+          <div class="hint">输入要部署的构建编号，或点击"拉取"从 Jenkins 历史中选择</div>
         </el-form-item>
 
         <el-form-item>
@@ -245,6 +401,12 @@ onMounted(() => {
   gap: var(--spacing-3);
 }
 
+.flat-list {
+  padding: var(--spacing-3);
+  background-color: var(--el-fill-color-light);
+  border-radius: var(--el-border-radius-base);
+}
+
 .server-checkbox {
   margin-right: 0;
 }
@@ -259,5 +421,77 @@ onMounted(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-top: 4px;
+}
+
+.jenkins-build-row {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+.build-history-panel {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.build-history-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--el-text-color-primary);
+}
+
+.build-history-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 0;
+  color: var(--el-text-color-secondary);
+}
+
+.build-history-empty {
+  text-align: center;
+  padding: 20px 0;
+  color: var(--el-text-color-secondary);
+}
+
+.build-history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.build-history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--el-border-radius-base);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.build-history-item:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.build-number {
+  font-weight: 600;
+  font-family: monospace;
+  min-width: 50px;
+}
+
+.build-time {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.build-desc {
+  color: var(--el-text-color-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
 }
 </style>
