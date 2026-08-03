@@ -8,6 +8,7 @@ import com.redeploy.repository.ServerMapper;
 import com.redeploy.repository.TaskMapper;
 import com.redeploy.service.DeployService;
 import com.redeploy.service.JenkinsService;
+import com.redeploy.service.AgentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +16,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/deploy")
@@ -35,6 +40,11 @@ public class DeployController {
     @Autowired
     private JenkinsService jenkinsService;
 
+    @Autowired
+    private AgentService agentService;
+
+    private static final int PRECHECK_THREADS = 10;
+
     @PostMapping
     public ResponseEntity<Map<String, Object>> triggerDeploy(@RequestBody DeployRequest request) {
         // Validate task exists
@@ -51,6 +61,17 @@ public class DeployController {
         }
         if (servers.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No valid servers found"));
+        }
+
+        // Pre-check: verify all servers are online
+        List<Server> offlineServers = precheckServers(servers);
+        if (!offlineServers.isEmpty()) {
+            String names = offlineServers.stream()
+                    .map(s -> s.getName() + " (" + s.getHost() + ")")
+                    .collect(Collectors.joining(", "));
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "以下服务器离线: " + names
+            ));
         }
 
         // Create deploy history
@@ -157,6 +178,40 @@ public class DeployController {
         int count = oldRecords.size();
         deployHistoryMapper.deleteByCreatedAtBefore(threshold);
         return ResponseEntity.ok(Map.of("deleted", count));
+    }
+
+    private List<Server> precheckServers(List<Server> servers) {
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(servers.size(), PRECHECK_THREADS));
+        try {
+            List<CompletableFuture<ServerCheckResult>> futures = servers.stream()
+                    .map(server -> CompletableFuture.supplyAsync(() -> {
+                        boolean online = agentService.testConnection(server);
+                        server.setStatus(online ? "online" : "offline");
+                        serverMapper.update(server);
+                        return new ServerCheckResult(server, online);
+                    }, executor))
+                    .collect(Collectors.toList());
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            return futures.stream()
+                    .map(CompletableFuture::join)
+                    .filter(r -> !r.online)
+                    .map(r -> r.server)
+                    .collect(Collectors.toList());
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    private static class ServerCheckResult {
+        final Server server;
+        final boolean online;
+
+        ServerCheckResult(Server server, boolean online) {
+            this.server = server;
+            this.online = online;
+        }
     }
 
     public static class DeployRequest {

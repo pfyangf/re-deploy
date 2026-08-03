@@ -39,3 +39,6 @@ agent/vendor/
 
 # Compiled frontend assets in server static (tracked separately only when deploying)
 # Note: keep server/src/main/resources/static/ for prod build, ignore build cache
+release
+runtime
+*.jar

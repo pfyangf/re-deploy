@@ -185,7 +185,8 @@ async function handleSubmit() {
       router.push('/history')
     }
   } catch (error) {
-    ElMessage.error('启动部署失败')
+    const msg = error?.response?.data?.error || '启动部署失败'
+    ElMessage.error(msg)
     console.error(error)
   } finally {
     submitting.value = false

@@ -2,10 +2,11 @@
 import { onMounted, ref, computed } from 'vue'
 import api from '../api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Connection, Edit, Monitor, Cpu } from '@element-plus/icons-vue'
+import { Plus, Delete, Connection, Edit, Monitor, Cpu, Download } from '@element-plus/icons-vue'
 import ServerDialog from '../components/ServerDialog.vue'
 import DebugDialog from '../components/DebugDialog.vue'
 import TerminalDialog from '../components/TerminalDialog.vue'
+import AgentInstallGuide from '../components/AgentInstallGuide.vue'
 
 const groups = ref([])
 const servers = ref([])
@@ -15,6 +16,7 @@ const groupFilter = ref('')
 const addDialogVisible = ref(false)
 const debugDialogVisible = ref(false)
 const terminalDialogVisible = ref(false)
+const agentGuideVisible = ref(false)
 const currentDebugServerId = ref(null)
 const currentTerminalServerId = ref(null)
 
@@ -52,6 +54,14 @@ async function loadData() {
 }
 
 function handleAdd() {
+  addDialogVisible.value = true
+}
+
+function openAgentGuide() {
+  agentGuideVisible.value = true
+}
+
+function onGuideGotoAdd() {
   addDialogVisible.value = true
 }
 
@@ -126,6 +136,9 @@ onMounted(() => {
             :value="g.id"
           />
         </el-select>
+        <el-button :icon="Download" @click="openAgentGuide">
+          下载 Agent
+        </el-button>
         <el-button type="primary" :icon="Plus" @click="handleAdd">
           添加服务器
         </el-button>
@@ -145,13 +158,13 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" min-width="120" />
-        <el-table-column prop="host" label="地址" min-width="140">
+        <el-table-column prop="host" label="地址" width="140">
           <template #default="{ row }">
             <span class="font-mono">{{ row.host }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="port" label="端口" width="80" />
-        <el-table-column label="分组" width="120">
+        <el-table-column label="分组" width="180">
           <template #default="{ row }">
             {{ getGroupName(row.groupId) }}
           </template>
@@ -175,7 +188,7 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" width="400" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" :icon="Connection" @click="handleTest(row)">
               测试
@@ -214,6 +227,11 @@ onMounted(() => {
     <TerminalDialog
       v-model="terminalDialogVisible"
       :server-id="currentTerminalServerId"
+    />
+
+    <AgentInstallGuide
+      v-model="agentGuideVisible"
+      @goto-add="onGuideGotoAdd"
     />
   </div>
 </template>

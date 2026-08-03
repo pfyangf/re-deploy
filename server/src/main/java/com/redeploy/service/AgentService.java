@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +24,14 @@ public class AgentService {
     @Autowired
     private AgentMapper agentMapper;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public AgentService() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(5000);
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     public boolean testConnection(Server server) {
         String url = String.format("http://%s:%d/api/health", server.getHost(), server.getPort());
