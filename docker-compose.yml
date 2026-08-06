@@ -1,6 +1,6 @@
 services:
   redeploy-server:
-    image: pengfei2022/redeploy-server:latest
+    image: pengfei2022/redeploy-server:0.1.0
     container_name: redeploy-server
     restart: unless-stopped
     ports:
@@ -19,13 +19,18 @@ services:
       REDEPLOY_LOG_RETENTION_DAYS: ${REDEPLOY_LOG_RETENTION_DAYS:-7}
       REDEPLOY_HISTORY_RETENTION_DAYS: ${REDEPLOY_HISTORY_RETENTION_DAYS:-7}
       # JVM 参数（可选）
-      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      JAVA_OPTS:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9006/"]
+      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:9006/" ]
       interval: 30s
       timeout: 5s
       start_period: 30s
       retries: 3
+#    mem_limit: 2g
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 2g

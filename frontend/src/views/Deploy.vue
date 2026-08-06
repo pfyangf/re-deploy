@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '../api/client'
 import { ElMessage } from 'element-plus'
 import { Promotion, Refresh } from '@element-plus/icons-vue'
+import { saveDeployRecord, getDeployHistoryByTaskIds } from '../utils/deployHistory'
 
 const router = useRouter()
 const tasks = ref([])
@@ -20,6 +21,8 @@ const form = ref({
   version: '',
   jenkinsBuildNumber: ''
 })
+
+const deployHistory = ref([])
 
 const buildHistoryVisible = ref(false)
 const buildHistoryLoading = ref(false)
@@ -124,6 +127,28 @@ function selectBuild(build) {
   buildHistoryVisible.value = false
 }
 
+function applyHistoryRecord(record) {
+  form.value.taskId = record.taskId
+  form.value.serverIds = [...record.serverIds]
+  form.value.version = record.version || ''
+  form.value.jenkinsBuildNumber = record.jenkinsBuildNumber || ''
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins} 分钟前`
+  if (diffHours < 24) return `${diffHours} 小时前`
+  if (diffDays < 7) return `${diffDays} 天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 function formatBuildTime(timestamp) {
   if (!timestamp) return ''
   const date = new Date(timestamp)
@@ -169,6 +194,16 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    saveDeployRecord({
+      taskId: parseInt(form.value.taskId),
+      taskName: selectedTask.value ? selectedTask.value.name : '',
+      groupId: selectedGroupId.value,
+      groupName: getGroupName(selectedGroupId.value),
+      serverIds: form.value.serverIds,
+      version: form.value.version,
+      jenkinsBuildNumber: form.value.jenkinsBuildNumber
+    })
+
     const requestData = {
       taskId: parseInt(form.value.taskId),
       serverIds: form.value.serverIds,
@@ -196,6 +231,22 @@ async function handleSubmit() {
 onMounted(() => {
   loadData()
 })
+
+watch(() => tasks.value, () => {
+  refreshDeployHistory()
+}, { deep: true })
+
+watch(selectedGroupId, () => {
+  refreshDeployHistory()
+})
+
+function refreshDeployHistory() {
+  if (selectedGroupId.value !== null && tasks.value.length) {
+    deployHistory.value = getDeployHistoryByTaskIds(tasks.value.map(t => t.id))
+  } else {
+    deployHistory.value = []
+  }
+}
 </script>
 
 <template>
@@ -205,6 +256,24 @@ onMounted(() => {
     </div>
 
     <el-card shadow="never" class="form-card">
+      <div v-if="deployHistory.length" class="quick-fill-section">
+        <div class="quick-fill-title">快捷填充（最近 {{ deployHistory.length }} 次部署）</div>
+        <div class="quick-fill-list">
+          <div
+            v-for="record in deployHistory"
+            :key="record.timestamp"
+            class="quick-fill-card"
+            @click="applyHistoryRecord(record)"
+          >
+            <div class="qf-task-name">{{ record.taskName || '未知任务' }}</div>
+            <div class="qf-group">{{ record.groupName || '默认分组' }}</div>
+            <div class="qf-servers">{{ record.serverIds.length }} 台服务器</div>
+            <div v-if="record.jenkinsBuildNumber" class="qf-build">Jenkins #{{ record.jenkinsBuildNumber }}</div>
+            <div class="qf-time">{{ formatRelativeTime(record.timestamp) }}</div>
+          </div>
+        </div>
+      </div>
+
       <el-form :model="form" label-width="100px" label-position="right">
         <el-form-item label="选择分组">
           <el-select
@@ -494,5 +563,72 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 120px;
+}
+
+.quick-fill-section {
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-4);
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+}
+
+.quick-fill-title {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: var(--spacing-3);
+}
+
+.quick-fill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+}
+
+.quick-fill-card {
+  padding: var(--spacing-3);
+  background-color: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--el-border-radius-base);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 140px;
+}
+
+.quick-fill-card:hover {
+  background-color: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+}
+
+.qf-task-name {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  margin-bottom: 4px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qf-group {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 4px;
+}
+
+.qf-servers {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.qf-build {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-family: monospace;
+}
+
+.qf-time {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 4px;
 }
 </style>
