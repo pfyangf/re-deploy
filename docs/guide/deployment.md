@@ -68,7 +68,7 @@ docker version  # 20.10+，需支持 buildx
 ```bash
 # Linux/macOS
 ./scripts/build.sh                                    # 默认：从 pom 读版本，单平台 amd64，本地 --load
-./scripts/build.sh --version 0.2.3                    # 指定版本号
+./scripts/build.sh --version 0.1.1                    # 指定版本号
 ./scripts/build.sh --platforms linux/arm64            # 只构 arm64
 ./scripts/build.sh --no-agent                         # 跳过 agent 交叉编译
 ```
