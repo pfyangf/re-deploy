@@ -34,7 +34,7 @@ sudo systemctl start deploy-agent
 sudo systemctl stop deploy-agent
 
 # 重启服务
-sudo systemctl restart deploy-agent
+sudo1
 
 # 查看服务状态
 sudo systemctl status deploy-agent

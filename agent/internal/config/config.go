@@ -21,17 +21,19 @@ type Config struct {
 	Token      string    `yaml:"token"`
 	Port       int       `yaml:"port"`
 	DataDir    string    `yaml:"data_dir"`
+	CorsOrigin string    `yaml:"cors_origin"`
 	Log        LogConfig `yaml:"log"`
 	ConfigPath string    `yaml:"-"`
 	FirstRun   bool      `yaml:"-"`
 }
 
 type configFile struct {
-	ServerURL string       `yaml:"server_url"`
-	Token     string       `yaml:"token"`
-	Port      int          `yaml:"port"`
-	DataDir   string       `yaml:"data_dir"`
-	Log       logConfigRaw `yaml:"log"`
+	ServerURL  string       `yaml:"server_url"`
+	Token      string       `yaml:"token"`
+	Port       int          `yaml:"port"`
+	DataDir    string       `yaml:"data_dir"`
+	CorsOrigin string       `yaml:"cors_origin"`
+	Log        logConfigRaw `yaml:"log"`
 }
 
 type logConfigRaw struct {
@@ -44,6 +46,7 @@ const (
 	defaultLogDir        = "/opt/deploy-agent/log"
 	defaultLogLevel      = "info"
 	defaultLogMaxAgeDays = 30
+	defaultCorsOrigin    = "https://bsck.cnoic.com:50002"
 )
 
 func Load() (*Config, error) {
@@ -57,6 +60,7 @@ func Load() (*Config, error) {
 		ConfigPath: configPath,
 		Port:       9009,
 		DataDir:    "/opt/deploy-agent/data",
+		CorsOrigin: defaultCorsOrigin,
 		Log: LogConfig{
 			Dir:        defaultLogDir,
 			Level:      defaultLogLevel,
@@ -99,6 +103,9 @@ func Load() (*Config, error) {
 		cfg.Token = file.Token
 		cfg.Port = file.Port
 		cfg.DataDir = file.DataDir
+		if file.CorsOrigin != "" {
+			cfg.CorsOrigin = file.CorsOrigin
+		}
 		if file.Log.Dir != "" {
 			cfg.Log.Dir = file.Log.Dir
 		}
@@ -126,10 +133,11 @@ func Load() (*Config, error) {
 func (c *Config) Save() error {
 	maxAge := c.Log.MaxAgeDays
 	file := configFile{
-		ServerURL: c.ServerURL,
-		Token:     c.Token,
-		Port:      c.Port,
-		DataDir:   c.DataDir,
+		ServerURL:  c.ServerURL,
+		Token:      c.Token,
+		Port:       c.Port,
+		DataDir:    c.DataDir,
+		CorsOrigin: c.CorsOrigin,
 		Log: logConfigRaw{
 			Dir:        c.Log.Dir,
 			Level:      c.Log.Level,

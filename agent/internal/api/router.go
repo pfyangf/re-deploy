@@ -1,10 +1,12 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -28,6 +30,8 @@ func NewServer(cfg *config.Config) *Server {
 }
 
 func (s *Server) setupRoutes() {
+	// Security headers first (applies to all responses incl. 401)
+	s.router.Use(s.securityHeadersMiddleware)
 	// Auth middleware
 	s.router.Use(s.authMiddleware)
 	s.router.Use(s.loggingMiddleware)
@@ -48,12 +52,20 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/task/execute", s.taskExecuteHandler).Methods("POST")
 	s.router.HandleFunc("/api/task/{taskId}/status", s.taskStatusHandler).Methods("GET")
 	s.router.HandleFunc("/api/task/{taskId}/cancel", s.taskCancelHandler).Methods("POST")
+
+	// Ensure unmatched routes (incl. "/") still get security headers.
+	// router.Use() only applies to matched routes, so wrap the default 404 handler.
+	s.router.NotFoundHandler = s.securityHeadersMiddleware(http.NotFoundHandler())
 }
 
 func (s *Server) Start() error {
 	s.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.Port),
-		Handler: s.router,
+		Addr:              fmt.Sprintf(":%d", s.cfg.Port),
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	return s.server.ListenAndServe()
 }
@@ -79,11 +91,23 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != s.cfg.Token {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.Token)) != 1 {
 			http.Error(w, `{"error":"Invalid token"}`, http.StatusUnauthorized)
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=()")
+		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		w.Header().Set("Access-Control-Allow-Origin", s.cfg.CorsOrigin)
+		w.Header().Set("Clear-Site-Data", `"cache"`)
 		next.ServeHTTP(w, r)
 	})
 }
