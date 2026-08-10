@@ -22,6 +22,8 @@ docker logs deploy-agent | grep -A2 "Agent Token"
 - HEALTHCHECK 打的是免鉴权的 /api/health（router.go:69）
 - cd agent
   $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o deploy-agent-linux-amd64 ./cmd/agent
+
+
 ```azure
 
 # 重新加载 systemd 配置（修改服务文件后执行）
@@ -34,7 +36,7 @@ sudo systemctl start deploy-agent
 sudo systemctl stop deploy-agent
 
 # 重启服务
-sudo1
+sudo systemctl restart deploy-agent
 
 # 查看服务状态
 sudo systemctl status deploy-agent

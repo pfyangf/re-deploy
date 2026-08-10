@@ -57,7 +57,7 @@ export default {
 
   // Deploy
   createDeploy: (data) => api.post('/api/deploy', data),
-  getDeployDetail: (id) => api.get(`/api/deploy/${id}`),
+  getDeployDetail: (id) => api.get(`/api/deploy/${id}/detail`),
   getJenkinsBuildHistory: (taskId) => api.get('/api/deploy/jenkins/builds', { params: { taskId } }),
 
   // Artifacts

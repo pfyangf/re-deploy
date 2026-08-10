@@ -107,6 +107,13 @@ public class DeployController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<DeployHistory> getDeployDetail(@PathVariable Long id) {
+        return deployHistoryMapper.findByIdWithDetail(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/history")
     public List<DeployHistory> getDeployHistory(
             @RequestParam(required = false) Long serverId,

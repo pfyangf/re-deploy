@@ -13,6 +13,7 @@ public class DeployHistory {
     private LocalDateTime completedAt;
     private String errorMessage;
     private String logs;
+    private String detailLogs;
     private LocalDateTime createdAt;
 
     // Transient: filled by controller from tasks table for UI display, not persisted
@@ -46,6 +47,9 @@ public class DeployHistory {
 
     public String getLogs() { return logs; }
     public void setLogs(String logs) { this.logs = logs; }
+
+    public String getDetailLogs() { return detailLogs; }
+    public void setDetailLogs(String detailLogs) { this.detailLogs = detailLogs; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

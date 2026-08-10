@@ -11,8 +11,10 @@ spring:
     driver-class-name: org.sqlite.JDBC
   sql:
     init:
-      mode: never
+      mode: always
       schema-locations: classpath:schema.sql
+      data-locations: classpath:migration/*.sql
+      continue-on-error: true
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai

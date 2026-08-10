@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -40,9 +41,19 @@ public class DeployService {
     @Autowired
     private ArtifactService artifactService;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = createRestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
+
+    private static RestTemplate createRestTemplate() {
+        RestTemplate rt = new RestTemplate();
+        // 强制 StringHttpMessageConverter 用 UTF-8，避免 agent 返回的 ndjson 中文被按 ISO-8859-1 解码乱码
+        rt.getMessageConverters().stream()
+                .filter(c -> c instanceof StringHttpMessageConverter)
+                .map(c -> (StringHttpMessageConverter) c)
+                .forEach(c -> c.setDefaultCharset(java.nio.charset.StandardCharsets.UTF_8));
+        return rt;
+    }
 
     @Async
     public void deploy(DeployHistory history, Task task, List<Server> servers, Map<String, String> params) {
@@ -129,15 +140,29 @@ public class DeployService {
          history.setCompletedAt(LocalDateTime.now());
 
          StringBuilder logs = new StringBuilder();
+         StringBuilder detailLogs = new StringBuilder();
          for (DeployResult result : results) {
-             logs.append(String.format("Server: %s, Success: %s, Message: %s\n",
+             // summary 行
+             logs.append(String.format("Server: %s, Success: %s, Message: %s%n",
                      result.getServerName(), result.isSuccess(), result.getMessage()));
+
+             // 详情分段
+             detailLogs.append(String.format("===== [%s %s] =====%n",
+                     result.getServerName(),
+                     result.getServerHost() != null ? result.getServerHost() : ""));
+             if (result.getTaskLogs() != null) {
+                 detailLogs.append(result.getTaskLogs());
+             } else {
+                 detailLogs.append("(无日志)\n");
+             }
+             detailLogs.append("\n");
          }
          if (downloadedArtifact != null) {
-             logs.insert(0, String.format("Downloaded artifact from Jenkins: %s (%d bytes)\n",
+             logs.insert(0, String.format("Downloaded artifact from Jenkins: %s (%d bytes)%n",
                      downloadedArtifact.getName(), downloadedArtifact.length()));
          }
          history.setLogs(logs.toString());
+         history.setDetailLogs(detailLogs.toString());
 
          if (!allSuccess) {
              StringBuilder errorMsg = new StringBuilder("Failed servers: ");
@@ -180,7 +205,9 @@ public class DeployService {
 
                 if (!uploaded) {
                     log.error("Failed to upload artifact to agent {}", serverName);
-                    return new DeployResult(serverName, false, "Failed to upload artifact to agent");
+                    DeployResult fail = new DeployResult(serverName, false, "Failed to upload artifact to agent");
+                    fail.setServerHost(server.getHost());
+                    return fail;
                 }
 
                 // Add artifact filename to params for deploy step
@@ -214,14 +241,20 @@ public class DeployService {
                 String taskId = (String) response.getBody().get("task_id");
 
                 // Poll for task completion
-                return pollTaskStatus(server, taskId, serverName);
+                DeployResult result = pollTaskStatus(server, taskId, serverName);
+                result.setServerHost(server.getHost());
+                return result;
             }
 
-            return new DeployResult(serverName, false, "Failed to start task on agent");
+            DeployResult fail = new DeployResult(serverName, false, "Failed to start task on agent");
+            fail.setServerHost(server.getHost());
+            return fail;
 
         } catch (Exception e) {
             log.error("Failed to deploy to server {}: {}", serverName, e.getMessage());
-            return new DeployResult(serverName, false, e.getMessage());
+            DeployResult fail = new DeployResult(serverName, false, e.getMessage());
+            fail.setServerHost(server.getHost());
+            return fail;
         }
     }
 
@@ -246,12 +279,18 @@ public class DeployService {
                     String status = (String) body.get("status");
 
                     if ("success".equals(status)) {
-                        return new DeployResult(serverName, true, "Deployment successful");
+                        DeployResult result = new DeployResult(serverName, true, "Deployment successful");
+                        result.setTaskLogs(fetchTaskLogs(server, taskId));
+                        return result;
                     } else if ("failed".equals(status)) {
                         String error = (String) body.getOrDefault("error", "Unknown error");
-                        return new DeployResult(serverName, false, error);
+                        DeployResult result = new DeployResult(serverName, false, error);
+                        result.setTaskLogs(fetchTaskLogs(server, taskId));
+                        return result;
                     } else if ("cancelled".equals(status)) {
-                        return new DeployResult(serverName, false, "Deployment cancelled");
+                        DeployResult result = new DeployResult(serverName, false, "Deployment cancelled");
+                        result.setTaskLogs(fetchTaskLogs(server, taskId));
+                        return result;
                     }
                     // Still running, continue polling
                 }
@@ -260,13 +299,105 @@ public class DeployService {
             }
         }
 
-        return new DeployResult(serverName, false, "Deployment timed out");
+        DeployResult timeoutResult = new DeployResult(serverName, false, "Deployment timed out");
+        timeoutResult.setTaskLogs(fetchTaskLogs(server, taskId));
+        return timeoutResult;
+    }
+
+    /**
+     * 拉取 agent 的 per-task 日志，解析 ndjson 格式化为可读文本。
+     * 404（agent 版本过低）-> 占位符；其他异常 -> 占位符。
+     */
+    private String fetchTaskLogs(Server server, String taskId) {
+        String url = String.format("http://%s:%d/api/task/%s/logs",
+                server.getHost(), server.getPort(), taskId);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + server.getAgentToken());
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return "[agent 版本过低，无日志]";
+            }
+            if (response.getBody() == null || response.getBody().isEmpty()) {
+                return "(无日志记录)";
+            }
+            return formatNdjsonLogs(response.getBody());
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return "[agent 版本过低，无日志]";
+        } catch (Exception e) {
+            return "[拉取失败: " + e.getMessage() + "]";
+        }
+    }
+
+    /**
+     * 解析 agent 返回的 ndjson（每行一个 JSON slog record），格式化为可读文本。
+     * 解析失败时 fallback 返回原始文本。
+     */
+    @SuppressWarnings("unchecked")
+    private String formatNdjsonLogs(String ndjson) {
+        StringBuilder sb = new StringBuilder();
+        String[] lines = ndjson.split("\n");
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+            try {
+                Map<String, Object> rec = objectMapper.readValue(line, Map.class);
+                String event = (String) rec.getOrDefault("event", "");
+                String level = (String) rec.getOrDefault("level", "");
+                String msg = (String) rec.getOrDefault("msg", "");
+                String time = (String) rec.getOrDefault("time", "");
+
+                switch (event) {
+                    case "task.start":
+                        sb.append(String.format("[%s] task start  task_name=%s step_count=%s%n",
+                                time, rec.get("task_name"), rec.get("step_count")));
+                        break;
+                    case "task.end":
+                        sb.append(String.format("[%s] task end  status=%s duration_ms=%s",
+                                time, rec.get("status"), rec.get("duration_ms")));
+                        if (rec.containsKey("error")) {
+                            sb.append(" error=").append(rec.get("error"));
+                        }
+                        sb.append("\n");
+                        break;
+                    case "task.step.start":
+                        sb.append(String.format("[%s] step[%s] %s  type=%s",
+                                time, rec.getOrDefault("step_index", "?"), rec.get("step_name"), rec.get("step_type")));
+                        if (rec.containsKey("command")) sb.append(" cmd=\"").append(rec.get("command")).append("\"");
+                        if (rec.containsKey("deploy_path")) sb.append(" dest=").append(rec.get("deploy_path"));
+                        sb.append("\n");
+                        break;
+                    case "task.step.end":
+                        sb.append(String.format("[%s] step[%s] %s  exit=%s status=%s duration_ms=%s%n",
+                                time, rec.getOrDefault("step_index", "?"), rec.get("step_name"),
+                                rec.get("exit_code"), rec.get("status"), rec.get("duration_ms")));
+                        Object output = rec.get("output");
+                        if (output != null && !output.toString().isEmpty()) {
+                            for (String outLine : output.toString().split("\n")) {
+                                sb.append("  ").append(outLine).append("\n");
+                            }
+                        }
+                        if (rec.containsKey("error")) {
+                            sb.append("  error: ").append(rec.get("error")).append("\n");
+                        }
+                        break;
+                    default:
+                        sb.append(String.format("[%s] %s %s%n", time, level, msg));
+                }
+            } catch (Exception e) {
+                // 解析失败 fallback 存原始行
+                sb.append(line).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     public static class DeployResult {
         private String serverName;
+        private String serverHost;
         private boolean success;
         private String message;
+        private String taskLogs;
 
         public DeployResult(String serverName, boolean success, String message) {
             this.serverName = serverName;
@@ -278,12 +409,28 @@ public class DeployService {
             return serverName;
         }
 
+        public String getServerHost() {
+            return serverHost;
+        }
+
+        public void setServerHost(String serverHost) {
+            this.serverHost = serverHost;
+        }
+
         public boolean isSuccess() {
             return success;
         }
 
         public String getMessage() {
             return message;
+        }
+
+        public String getTaskLogs() {
+            return taskLogs;
+        }
+
+        public void setTaskLogs(String taskLogs) {
+            this.taskLogs = taskLogs;
         }
     }
 }

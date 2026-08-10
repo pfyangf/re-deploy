@@ -53,6 +53,11 @@ func Dir() string {
 	return cfg.Dir
 }
 
+// Writer 返回全局 DailyWriter，供 TaskFanOutWriter 等复用
+func Writer() *DailyWriter {
+	return writer
+}
+
 func MaxAgeDays() int {
 	return cfg.MaxAgeDays
 }

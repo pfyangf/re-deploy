@@ -52,6 +52,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/task/execute", s.taskExecuteHandler).Methods("POST")
 	s.router.HandleFunc("/api/task/{taskId}/status", s.taskStatusHandler).Methods("GET")
 	s.router.HandleFunc("/api/task/{taskId}/cancel", s.taskCancelHandler).Methods("POST")
+	s.router.HandleFunc("/api/task/{taskId}/logs", s.taskLogsHandler).Methods("GET")
 
 	// Ensure unmatched routes (incl. "/") still get security headers.
 	// router.Use() only applies to matched routes, so wrap the default 404 handler.

@@ -139,6 +139,25 @@ func (s *Server) taskCancelHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) executeTask(ctx context.Context, execution *TaskExecution, steps []StepDef, params map[string]string) {
 	exec := executor.NewExecutor(s.cfg.DataDir)
+
+	// 开 per-task 日志 writer，构造 task-scoped logger（fan-out 到 daily + task 文件）
+	tw, err := logging.OpenTaskLog(execution.ID)
+	if err != nil {
+		// 开 per-task 失败不阻塞 task 执行，仍用 default logger
+		slog.Warn("failed to open per-task log, fallback to daily only",
+			"event", "tasklog.open.error",
+			"task_id", execution.ID,
+			"error", err.Error(),
+		)
+	}
+	if tw != nil {
+		fanOut := logging.NewTaskFanOutWriter(logging.Writer(), tw)
+		handler := slog.NewJSONHandler(fanOut, &slog.HandlerOptions{Level: slog.LevelInfo})
+		taskLogger := slog.New(handler).With("task_id", execution.ID)
+		ctx = logging.WithTaskLogger(ctx, taskLogger)
+		defer logging.CloseTaskLog(execution.ID)
+	}
+
 	taskLogger := logging.FromContext(ctx)
 	taskStart := time.Now()
 
@@ -319,4 +338,24 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err
+}
+
+// taskLogsHandler 返回 task 的 per-task 日志文件内容（每行一个 JSON slog record）
+func (s *Server) taskLogsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	taskID := vars["taskId"]
+
+	data, err := logging.ReadTaskLog(taskID)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "Task logs not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to read task logs: "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }

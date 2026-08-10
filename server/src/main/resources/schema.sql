@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS deploy_history (
     completed_at TIMESTAMP,
     error_message TEXT,
     logs TEXT,
+    detail_logs TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (task_id) REFERENCES tasks(id)
 );

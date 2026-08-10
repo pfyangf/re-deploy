@@ -47,6 +47,7 @@ public class DataMigration {
         ensureColumnExists("servers", "ssh_private_key", "TEXT");
         ensureColumnExists("servers", "ssh_port", "INTEGER DEFAULT 22");
         ensureColumnExists("tasks", "group_id", "INTEGER");
+        ensureColumnExists("deploy_history", "detail_logs", "TEXT");
 
         // Migrate existing data: group_name -> group_id
         migrateGroupNamesToGroupId();

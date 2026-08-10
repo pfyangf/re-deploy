@@ -8,10 +8,11 @@ import (
 type ctxKey string
 
 const (
-	ctxKeyTaskID    ctxKey = "task_id"
-	ctxKeyStepIndex ctxKey = "step_index"
-	ctxKeyUploadID  ctxKey = "upload_id"
-	ctxKeyRequestID ctxKey = "request_id"
+	ctxKeyTaskID     ctxKey = "task_id"
+	ctxKeyStepIndex  ctxKey = "step_index"
+	ctxKeyUploadID   ctxKey = "upload_id"
+	ctxKeyRequestID  ctxKey = "request_id"
+	ctxKeyTaskLogger ctxKey = "task_logger"
 )
 
 func WithTaskID(ctx context.Context, taskID string) context.Context {
@@ -30,7 +31,16 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 	return context.WithValue(ctx, ctxKeyRequestID, requestID)
 }
 
+func WithTaskLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, ctxKeyTaskLogger, logger)
+}
+
 func FromContext(ctx context.Context) *slog.Logger {
+	if ctx != nil {
+		if l, ok := ctx.Value(ctxKeyTaskLogger).(*slog.Logger); ok && l != nil {
+			return l
+		}
+	}
 	logger := slog.Default()
 	if ctx == nil {
 		return logger
