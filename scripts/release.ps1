@@ -92,6 +92,16 @@ $nextSnapshot = "$($tParts[0]).$($tParts[1]).$([int]$tParts[2]+1)-SNAPSHOT"
 Log "发布版本: $target"
 Log "下一版:   $nextSnapshot"
 
+# ---- Step 2.5: 版本合法性校验 ---------------------------------------------
+if ($Bump -match '^\d+\.\d+\.\d+$') {
+    Log "显式指定版本，跳过 SNAPSHOT 校验"
+    if ($target -eq $base) {
+        Fail "目标版本 $target 与当前版本（去 SNAPSHOT 后）相同，没有变化。"
+    }
+} elseif ($current -notmatch '-SNAPSHOT$') {
+    Fail "当前版本 $current 不是 SNAPSHOT 格式，不符合 master 约定。请先手动将 pom.xml 改为 X.Y.Z-SNAPSHOT 再执行发布。"
+}
+
 try {
     # ---- Step 3: 设置 pom 到目标版本 --------------------------------------
     Log "mvn versions:set → $target"
@@ -108,7 +118,7 @@ try {
     & git -C $RepoRoot add server/pom.xml
     & git -C $RepoRoot commit -m "release: v$target"
     if ($LASTEXITCODE -ne 0) { throw "git commit 失败" }
-    & git -C $RepoRoot tag "v$target"
+    & git -C $RepoRoot tag -a "v$target" -m "release v$target"
     if ($LASTEXITCODE -ne 0) { throw "git tag 失败" }
 
     # ---- Step 6: bump 回 -SNAPSHOT ---------------------------------------
@@ -126,6 +136,52 @@ try {
 }
 catch {
     Fail $_.Exception.Message
+}
+
+Write-Host ""
+Log "验证发布结果..."
+
+$pass = 0
+$fail = 0
+
+function Check($label, $scriptBlock) {
+    $result = & $scriptBlock 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Log "  ✓ $label"
+        $script:pass++
+    } else {
+        Warn "  ✗ $label"
+        $script:fail++
+    }
+}
+
+Check "本地 tag v$target 存在" {
+    & git -C $RepoRoot rev-parse "v$target"
+}
+
+Check "远端 tag v$target 存在" {
+    & git -C $RepoRoot ls-remote --tags origin "v$target"
+}
+
+Check "Docker 镜像 ${ImageRepo}:$target manifest 有效" {
+    & docker buildx imagetools inspect "${ImageRepo}:$target"
+}
+
+if ($fail -eq 0) {
+    Log "全部验证通过 ($pass/$pass)"
+} else {
+    Warn "验证 $fail 项失败 / $($pass + $fail) 项，发布本身已完成，以下为手动验证命令："
+    Write-Host "  # 检查本地 tag"
+    Write-Host "  git tag -l v$target"
+    Write-Host "  git show v$target"
+    Write-Host ""
+    Write-Host "  # 检查远端 tag"
+    Write-Host "  git ls-remote --tags origin v$target"
+    Write-Host "  # 如缺失，手动推送："
+    Write-Host "  #   git push origin v$target"
+    Write-Host ""
+    Write-Host "  # 检查镜像多架构"
+    Write-Host "  docker buildx imagetools inspect ${ImageRepo}:$target"
 }
 
 Write-Host ""

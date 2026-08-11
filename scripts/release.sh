@@ -96,6 +96,19 @@ NEXT_SNAPSHOT="${TMAJ}.${TMIN}.$((TPAT+1))-SNAPSHOT"
 log "发布版本: $TARGET"
 log "下一版:   $NEXT_SNAPSHOT"
 
+# ---- Step 2.5: 版本合法性校验 ---------------------------------------------
+if [[ "$BUMP" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  log "显式指定版本，跳过 SNAPSHOT 校验"
+  if [[ "$TARGET" == "$BASE" ]]; then
+    err "目标版本 $TARGET 与当前版本（去 SNAPSHOT 后）相同，没有变化。"
+    exit 1
+  fi
+elif [[ "$CURRENT" != *-SNAPSHOT ]]; then
+  err "当前版本 $CURRENT 不是 SNAPSHOT 格式，不符合 master 约定。"
+  err "请先手动将 pom.xml 改为 X.Y.Z-SNAPSHOT 再执行发布。"
+  exit 1
+fi
+
 # ---- Step 3: 设置 pom 到目标版本 ------------------------------------------
 log "mvn versions:set → $TARGET"
 mvn -f "$REPO_ROOT/server/pom.xml" -q versions:set -DnewVersion="$TARGET" -DgenerateBackupPoms=false
@@ -108,7 +121,7 @@ sh "$BUILD_SCRIPT" --version "$TARGET" --platforms "linux/amd64,linux/arm64" --p
 log "git commit release: v$TARGET"
 git -C "$REPO_ROOT" add server/pom.xml
 git -C "$REPO_ROOT" commit -m "release: v$TARGET"
-git -C "$REPO_ROOT" tag "v$TARGET"
+git -C "$REPO_ROOT" tag -a "v$TARGET" -m "release v$TARGET"
 
 # ---- Step 6: bump 回 -SNAPSHOT --------------------------------------------
 log "mvn versions:set → $NEXT_SNAPSHOT"
@@ -119,6 +132,51 @@ git -C "$REPO_ROOT" commit -m "chore: bump to $NEXT_SNAPSHOT"
 # ---- Step 7: push ---------------------------------------------------------
 log "git push --follow-tags"
 git -C "$REPO_ROOT" push --follow-tags
+
+# ---- Verification: 发布后验证 ---------------------------------------------
+log "验证发布结果..."
+
+verify_pass=0
+verify_fail=0
+
+check() {
+  local label="$1" shift
+  if "$@" >/dev/null 2>&1; then
+    log "  ✓ $label"
+    verify_pass=$((verify_pass + 1))
+  else
+    warn "  ✗ $label"
+    verify_fail=$((verify_fail + 1))
+  fi
+}
+
+check "本地 tag v$TARGET 存在" \
+  git -C "$REPO_ROOT" rev-parse "v$TARGET"
+
+check "远端 tag v$TARGET 存在" \
+  git -C "$REPO_ROOT" ls-remote --tags origin "v$TARGET"
+
+check "Docker 镜像 $IMAGE_REPO:$TARGET manifest 有效" \
+  docker buildx imagetools inspect "$IMAGE_REPO:$TARGET"
+
+if [[ $verify_fail -eq 0 ]]; then
+  log "全部验证通过 ($verify_pass/$verify_pass)"
+else
+  warn "验证 $verify_fail 项失败 / $((verify_pass + verify_fail)) 项，发布本身已完成，以下为手动验证命令："
+  cat <<EOF
+  # 检查本地 tag
+  git tag -l v$TARGET
+  git show v$TARGET
+
+  # 检查远端 tag
+  git ls-remote --tags origin v$TARGET
+  # 如缺失，手动推送：
+  #   git push origin v$TARGET
+
+  # 检查镜像多架构
+  docker buildx imagetools inspect $IMAGE_REPO:$TARGET
+EOF
+fi
 
 # ---- Done -----------------------------------------------------------------
 trap - ERR

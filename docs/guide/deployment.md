@@ -105,15 +105,43 @@ build 脚本会执行：
 
 release 脚本会依次完成：
 1. 校验 git 干净 + docker buildx + docker login
-2. `mvn versions:set` 到目标版本（去掉 SNAPSHOT）
-3. 调用 build 脚本，`--push` multi-arch（linux/amd64 + linux/arm64）到 Docker Hub
-4. `git commit "release: v<版本>"` + `git tag v<版本>`
-5. `mvn versions:set` 到下一版 `-SNAPSHOT`
-6. `git commit "chore: bump to <下一版>-SNAPSHOT"`
-7. `git push --follow-tags`
-8. 打印验证命令
+2. 校验当前 pom 版本为 SNAPSHOT 格式（`patch`/`minor`/`major` bump 时），且目标版本与当前版本不同
+3. `mvn versions:set` 到目标版本（去掉 SNAPSHOT）
+4. 调用 build 脚本，`--push` multi-arch（linux/amd64 + linux/arm64）到 Docker Hub
+5. `git commit "release: v<版本>"` + `git tag -a v<版本>`（annotated tag，含 message "release v<版本>"）
+6. `mvn versions:set` 到下一版 `-SNAPSHOT`
+7. `git commit "chore: bump to <下一版>-SNAPSHOT"`
+8. `git push --follow-tags`
+9. 自动验证：本地 tag、远端 tag、Docker 镜像 manifest — 失败仅警告不回滚
 
 失败会给出回滚提示（`git reset --hard HEAD~N`、`git tag -d v<版本>`）。
+
+### 前置校验说明
+
+release 脚本在执行任何修改操作之前会做以下校验：
+
+| 校验项 | 触发条件 | 行为 |
+|--------|----------|------|
+| SNAPSHOT 格式 | bump 类型为 `patch`/`minor`/`major` 时 | 当前版本不以 `-SNAPSHOT` 结尾则报错退出 |
+| 版本变化 | 始终校验 | 目标版本等于当前 base 版本则报错退出 |
+| 显式版本 | bump 为 `X.Y.Z` 格式时 | 跳过 SNAPSHOT 校验，仅校验版本变化 |
+
+> **为什么要校验 SNAPSHOT？** master 分支约定始终为 `X.Y.Z-SNAPSHOT`。
+> 如果 pom 不是 SNAPSHOT 格式，说明上次发布被中断或手动改过版本号，
+> 应先恢复到 SNAPSHOT 状态再发布，否则会出现版本回退或重复发布。
+
+### Annotated Tag 说明
+
+发布 tag 使用 **annotated tag**（`git tag -a -m`）而非轻量级 tag。原因：
+
+- `git push --follow-tags` 只推送 annotated tag，这是 Git 的设计约定。
+- Annotated tag 携带发布时间、作者、message 等元数据，便于追溯。
+
+验证 tag 类型：
+```bash
+git cat-file -t v0.1.0
+# tag   （annotated tag 输出 tag；轻量级 tag 输出 commit）
+```
 
 ### 首次发版
 
@@ -133,6 +161,19 @@ release 脚本会依次完成：
 docker buildx imagetools inspect pengfei2022/redeploy-server:0.1.0
 # 应看到 linux/amd64 与 linux/arm64 两条 manifest
 ```
+
+### 发布后验证清单
+
+release 脚本成功后会自动执行以下验证（任何一项失败仅警告，不触发回滚）：
+
+| # | 验证项 | 命令 | 预期 |
+|---|--------|------|------|
+| 1 | 本地 tag 存在 | `git tag -l v<版本>` | 输出 `v<版本>` |
+| 2 | 远端 tag 存在 | `git ls-remote --tags origin v<版本>` | 输出 tag hash |
+| 3 | 镜像多架构有效 | `docker buildx imagetools inspect pengfei2022/redeploy-server:<版本>` | 含 `linux/amd64` 和 `linux/arm64` |
+| 4 | pom 已回到 SNAPSHOT | `mvn help:evaluate -Dexpression=project.version -q -DforceStdout` | 输出 `X.Y.Z-SNAPSHOT` |
+
+如某项验证失败，可手动执行对应命令复核；远端 tag 缺失时用 `git push origin v<版本>` 补推。
 
 ---
 
