@@ -115,7 +115,7 @@ The system SHALL evolve database schema via a three-layer mechanism: (1) `schema
 
 #### Scenario: Java fallback ensures column exists
 - **WHEN** the ApplicationReadyEvent fires after schema.sql and migration SQL have run
-- **THEN** `DataMigration.ensureColumnExists` checks via PRAGMA table_info
+- **THEN** `DataMigration.ensureColumnExists` checks via `INFORMATION_SCHEMA.COLUMNS`
 - **AND** if the column still does not exist (edge case), it executes ALTER TABLE ADD COLUMN
 - **AND** if the column already exists, it skips silently
 

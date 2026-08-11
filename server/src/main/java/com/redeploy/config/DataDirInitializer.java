@@ -12,7 +12,7 @@ public class DataDirInitializer implements BeanFactoryPostProcessor {
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
-        // Create data directory for SQLite before any beans are initialized
+        // Create data directories for uploads, agent binaries, and logs
         createDirectory("./data");
         createDirectory("./data/uploads");
         createDirectory("./data/agents");

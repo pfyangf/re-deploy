@@ -28,8 +28,8 @@ public interface AgentMapper {
     List<Agent> findByLastHeartbeatBefore(@Param("date") LocalDateTime date);
 
     @Insert("INSERT INTO agents (server_id, hostname, ip, port, token, status, last_heartbeat, created_at) " +
-            "VALUES (#{serverId}, #{hostname}, #{ip}, #{port}, #{token}, #{status}, #{lastHeartbeat}, datetime('now'))")
-    @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "id", before = false, resultType = Long.class)
+            "VALUES (#{serverId}, #{hostname}, #{ip}, #{port}, #{token}, #{status}, #{lastHeartbeat}, NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Agent agent);
 
     @Update("UPDATE agents SET server_id=#{serverId}, port=#{port}, token=#{token}, " +

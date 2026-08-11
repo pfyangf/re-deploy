@@ -7,12 +7,14 @@ spring:
   application:
     name: redeploy-server
   datasource:
-    url: jdbc:sqlite:./data/redeploy.db
-    driver-class-name: org.sqlite.JDBC
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:redeploy}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USERNAME:redeploy}
+    password: ${MYSQL_PASSWORD:redeploy}
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema.sql
+#      schema-locations: classpath:schema.sql
       data-locations: classpath:migration/*.sql
       continue-on-error: true
   jackson:

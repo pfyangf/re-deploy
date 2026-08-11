@@ -11,7 +11,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
-import java.sql.ResultSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,7 @@ public class DataMigration {
         ensureColumnExists("servers", "ssh_private_key", "TEXT");
         ensureColumnExists("servers", "ssh_port", "INTEGER DEFAULT 22");
         ensureColumnExists("tasks", "group_id", "INTEGER");
-        ensureColumnExists("deploy_history", "detail_logs", "TEXT");
+        ensureColumnExists("deploy_history", "detail_logs", "LONGTEXT");
 
         // Migrate existing data: group_name -> group_id
         migrateGroupNamesToGroupId();
@@ -55,19 +54,12 @@ public class DataMigration {
 
     private void ensureColumnExists(String tableName, String columnName, String columnDef) {
         try {
-            // Check if column exists by querying PRAGMA table_info
-            boolean exists = Boolean.TRUE.equals(jdbcTemplate.query(
-                    "PRAGMA table_info(" + tableName + ")",
-                    (ResultSet rs) -> {
-                        while (rs.next()) {
-                            if (columnName.equalsIgnoreCase(rs.getString("name"))) {
-                                return Boolean.TRUE;
-                            }
-                        }
-                        return Boolean.FALSE;
-                    }
-            ));
-            if (!exists) {
+            String dbName = jdbcTemplate.queryForObject("SELECT DATABASE()", String.class);
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                    "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, dbName, tableName, columnName);
+            if (count != null && count == 0) {
                 jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDef);
                 System.out.println("Added column " + columnName + " to " + tableName);
             }

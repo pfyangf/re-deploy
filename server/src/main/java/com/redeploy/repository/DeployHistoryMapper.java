@@ -30,8 +30,8 @@ public interface DeployHistoryMapper {
     Optional<DeployHistory> findByIdWithDetail(Long id);
 
     @Insert("INSERT INTO deploy_history (task_id, server_ids, version, status, started_at, completed_at, error_message, logs, created_at) " +
-            "VALUES (#{taskId}, #{serverIds}, #{version}, #{status}, #{startedAt}, #{completedAt}, #{errorMessage}, #{logs}, datetime('now'))")
-    @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "id", before = false, resultType = Long.class)
+            "VALUES (#{taskId}, #{serverIds}, #{version}, #{status}, #{startedAt}, #{completedAt}, #{errorMessage}, #{logs}, NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(DeployHistory history);
 
     @Update("UPDATE deploy_history SET status=#{status}, completed_at=#{completedAt}, " +

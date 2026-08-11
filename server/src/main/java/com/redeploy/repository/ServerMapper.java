@@ -29,14 +29,14 @@ public interface ServerMapper {
     @Insert("INSERT INTO servers (name, host, port, agent_token, group_name, group_id, description, " +
             "ssh_username, ssh_password, ssh_private_key, ssh_port, status, created_at, updated_at) " +
             "VALUES (#{name}, #{host}, #{port}, #{agentToken}, #{groupName}, #{groupId}, #{description}, " +
-            "#{sshUsername}, #{sshPassword}, #{sshPrivateKey}, #{sshPort}, #{status}, datetime('now'), datetime('now'))")
-    @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "id", before = false, resultType = Long.class)
+            "#{sshUsername}, #{sshPassword}, #{sshPrivateKey}, #{sshPort}, #{status}, NOW(), NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Server server);
 
     @Update("UPDATE servers SET name=#{name}, host=#{host}, port=#{port}, agent_token=#{agentToken}, " +
             "group_name=#{groupName}, group_id=#{groupId}, description=#{description}, " +
             "ssh_username=#{sshUsername}, ssh_password=#{sshPassword}, ssh_private_key=#{sshPrivateKey}, ssh_port=#{sshPort}, " +
-            "status=#{status}, last_heartbeat=#{lastHeartbeat}, updated_at=datetime('now') WHERE id=#{id}")
+            "status=#{status}, last_heartbeat=#{lastHeartbeat}, updated_at=NOW() WHERE id=#{id}")
     int update(Server server);
 
     @Delete("DELETE FROM servers WHERE id = #{id}")

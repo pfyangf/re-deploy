@@ -18,8 +18,8 @@ public interface ArtifactMapper {
     Optional<Artifact> findByFilePath(@Param("filePath") String filePath);
 
     @Insert("INSERT INTO artifacts (filename, file_path, file_size, md5, uploaded_at) " +
-            "VALUES (#{filename}, #{filePath}, #{fileSize}, #{md5}, datetime('now'))")
-    @SelectKey(statement = "SELECT last_insert_rowid()", keyProperty = "id", before = false, resultType = Long.class)
+            "VALUES (#{filename}, #{filePath}, #{fileSize}, #{md5}, NOW())")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Artifact artifact);
 
     @Delete("DELETE FROM artifacts WHERE id = #{id}")

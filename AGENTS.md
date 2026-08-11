@@ -48,6 +48,8 @@ GOOS=linux GOARCH=arm64 go build -o deploy-agent-linux-arm64 ./cmd/agent
 
 **版本号真源**：`server/pom.xml` `<version>`。master HEAD 始终为 `X.Y.Z-SNAPSHOT`；release 脚本负责去 SNAPSHOT → 打 tag → bump 回 SNAPSHOT。所有 Docker 镜像 tag 与 Git tag 都从 pom 派生，不允许硬编码。
 
+**MySQL 部署前置**：server 启动前需准备 MySQL 8 实例。环境变量：MYSQL_HOST（默认 localhost）、MYSQL_PORT（默认 3306）、MYSQL_DB（默认 redeploy）、MYSQL_USERNAME（默认 redeploy）、MYSQL_PASSWORD（默认 redeploy）。MySQL 不可用时 server 启动失败。从老 SQLite 迁移数据用 `scripts/migrate-sqlite-to-mysql.sh`。
+
 ## Tests / Lint
 
 - No tests exist yet. `server/src/test/` is empty; `openspec/changes/re-deploy-tool/tasks.md` section 13 is unchecked.
@@ -56,14 +58,16 @@ GOOS=linux GOARCH=arm64 go build -o deploy-agent-linux-arm64 ./cmd/agent
 
 ## Data & Schema
 
-- SQLite DB at `server/data/redeploy.db` (auto-created via `DataDirInitializer`).
+- MySQL 8 数据库，独立部署。连接信息通过环境变量配置：`MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DB` / `MYSQL_USERNAME` / `MYSQL_PASSWORD`（默认 `localhost:3306/redeploy`）。MySQL 不可用时 server 启动失败，不降级。
 - Schema 演进三层机制（互为兜底）：
   - **① `schema.sql`**（`spring.sql.init.mode: always`）放 `CREATE TABLE IF NOT EXISTS`，定义全量列；新库建全表，老库 IF NOT EXISTS 跳过。
   - **② `migration/VNNN__name.sql`** 放增量 DDL（`ALTER TABLE ADD COLUMN` / `CREATE INDEX` / 约束等），`spring.sql.init.continue-on-error: true` 容错重复执行；新库列已存在报错被吞，老库增量变更成功。
-  - **③ `DataMigration.java`** 的 `ensureColumnExists` 在 `ApplicationReadyEvent` 时用 `PRAGMA table_info` 检查 + `ALTER TABLE ADD COLUMN` 兜底（仅加列）。
+  - **③ `DataMigration.java`** 的 `ensureColumnExists` 在 `ApplicationReadyEvent` 时用 `INFORMATION_SCHEMA.COLUMNS` 检查 + `ALTER TABLE ADD COLUMN` 兜底（仅加列）。
   - 新增列时三层同步更新。`schema.sql` 只放 `CREATE TABLE IF NOT EXISTS`，不放手写 ALTER。
 - MyBatis mappers are **annotation-based** in `repository/*Mapper.java`. `mapper-locations: classpath:mapper/*.xml` is configured but no XML mappers exist — keep new mappers annotation-based unless you also add the XML directory.
 - `map-underscore-to-camel-case: true` — DB columns are snake_case, models are camelCase.
+- Mapper SQL 使用 MySQL 语法：时间函数用 `NOW()`，自增 ID 回填用 `@Options(useGeneratedKeys=true, keyProperty=`"id`")`。
+- 数据迁移：从老 SQLite 数据库迁移到 MySQL 用 `scripts/migrate-sqlite-to-mysql.sh`（一次性停机迁移）。
 
 ## Auth model (easy to confuse)
 

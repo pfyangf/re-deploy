@@ -177,9 +177,67 @@ release 脚本成功后会自动执行以下验证（任何一项失败仅警告
 
 ---
 
-## 3. Docker Compose 部署（推荐）
+## 3. MySQL 数据库部署（前置）
 
-### 3.1 准备环境变量
+re-deploy server 依赖 MySQL 8，必须先于 server 启动。
+
+### 3.1 安装 MySQL 8
+
+```bash
+# Docker 方式（推荐）
+docker run -d \
+  --name redeploy-mysql \
+  --restart unless-stopped \
+  -p 3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=root-secret \
+  -e MYSQL_DATABASE=redeploy \
+  -e MYSQL_USER=redeploy \
+  -e MYSQL_PASSWORD=redeploy \
+  -v $(pwd)/mysql-data:/var/lib/mysql \
+  mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+```
+
+### 3.2 建库建用户
+
+如果上一步已通过 `MYSQL_DATABASE` / `MYSQL_USER` 自动创建，可跳过。手动创建：
+
+```sql
+CREATE DATABASE IF NOT EXISTS redeploy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'redeploy'@'%' IDENTIFIED BY 'redeploy';
+GRANT ALL PRIVILEGES ON redeploy.* TO 'redeploy'@'%';
+FLUSH PRIVILEGES;
+```
+
+### 3.3 从老 SQLite 迁移数据（可选）
+
+如果从旧版（SQLite）升级，使用迁移脚本：
+
+```bash
+# 停止 server，确保无写入
+./scripts/migrate-sqlite-to-mysql.sh ./data/redeploy.db localhost 3306 redeploy redeploy redeploy
+```
+
+脚本会导出 SQLite 数据、清洗语法、导入 MySQL，并验证行数一致。
+
+### 3.4 环境变量配置
+
+server 通过环境变量连接 MySQL：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `MYSQL_HOST` | `localhost` | MySQL 主机 |
+| `MYSQL_PORT` | `3306` | MySQL 端口 |
+| `MYSQL_DB` | `redeploy` | 数据库名 |
+| `MYSQL_USERNAME` | `redeploy` | 用户名 |
+| `MYSQL_PASSWORD` | `redeploy` | 密码 |
+
+MySQL 不可用时 server 启动失败，不降级。
+
+---
+
+## 4. Docker Compose 部署（推荐）
+
+### 4.1 准备环境变量
 
 ```bash
 cp .env.example .env
@@ -188,38 +246,38 @@ vi .env
 
 至少必须修改 `REDEPLOY_ADMIN_TOKEN`（默认 `changeme` 不安全）。
 
-### 3.2 启动
+### 4.2 启动
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-### 3.3 查看日志
+### 4.3 查看日志
 
 ```bash
 docker compose logs -f redeploy-server
 ```
 
-### 3.4 停止 / 升级
+### 4.4 停止 / 升级
 
 ```bash
 docker compose down                         # 停止
 docker compose pull && docker compose up -d # 升级到最新 :latest
 ```
 
-### 3.5 数据卷位置
+### 4.5 数据卷位置
 
 | 容器路径 | 宿主路径 | 说明 |
 |---------|---------|------|
-| `/app/data` | `./data` | SQLite 数据库、上传文件缓存、agent 二进制分发目录 |
+| `/app/data` | `./data` | 上传文件缓存、agent 二进制分发目录 |
 | `/app/logs` | `./logs` | Spring Boot 应用日志（redeploy-server.log） |
 
-**升级不会丢数据**：SQLite 和上传文件都在 `./data` 卷内。
+**升级不会丢数据**：上传文件和 agent 二进制在 `./data` 卷内；MySQL 数据由独立数据库管理，需单独备份。
 
 ---
 
-## 4. docker run 单容器部署
+## 5. docker run 单容器部署
 
 如果不想用 compose：
 
@@ -239,11 +297,11 @@ docker run -d \
 
 ---
 
-## 5. 本地开发（不用 Docker）
+## 6. 本地开发（不用 Docker）
 
 适合调试代码。
 
-### 5.1 交叉编译 agent（首次运行前必做）
+### 6.1 交叉编译 agent（首次运行前必做）
 
 `AgentDownloadController` 分发的 agent 二进制来自 `server/data/agents/`。本地跑之前需要放好：
 
@@ -266,7 +324,7 @@ Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
 
 或直接跑一次 `./scripts/build.{ps1,sh}`，会自动放好。
 
-### 5.2 设置环境变量
+### 6.2 设置环境变量
 
 **Windows PowerShell**：
 
@@ -284,7 +342,7 @@ export REDEPLOY_SSH_ENCRYPTION_KEY=""
 
 不设置也可以，`application.yml` 里的默认值会生效（`admin-token=changeme` 只适合本地调试）。
 
-### 5.3 启动
+### 6.3 启动
 
 ```bash
 cd server
@@ -298,10 +356,15 @@ java -jar target/redeploy-server-*.jar
 
 ---
 
-## 6. 环境变量清单
+## 7. 环境变量清单
 
 | 变量 | 含义 | 默认值 | 是否必填 |
 |------|------|--------|---------|
+| `MYSQL_HOST` | MySQL 数据库主机 | `localhost` | 是（Docker 部署指向 MySQL 容器） |
+| `MYSQL_PORT` | MySQL 数据库端口 | `3306` | 否 |
+| `MYSQL_DB` | MySQL 数据库名 | `redeploy` | 否 |
+| `MYSQL_USERNAME` | MySQL 用户名 | `redeploy` | 否 |
+| `MYSQL_PASSWORD` | MySQL 密码 | `redeploy` | 是（生产环境必须修改） |
 | `REDEPLOY_ADMIN_TOKEN` | 运维 Token（Jenkins 等调用 `/api/deploy` 时使用） | `changeme` | Compose 部署必填 |
 | `REDEPLOY_SSH_ENCRYPTION_KEY` | SSH 私钥 AES 加密密钥（Base64，16/24/32 字节） | 空 → 首启自动生成 | 否 |
 | `REDEPLOY_DINGTALK_ENABLED` | 是否启用钉钉告警 | `false` | 否 |
@@ -316,16 +379,16 @@ java -jar target/redeploy-server-*.jar
 
 ---
 
-## 7. 常见故障排查
+## 8. 常见故障排查
 
-### 7.1 `docker buildx: command not found` 或 buildx 未初始化
+### 8.1 `docker buildx: command not found` 或 buildx 未初始化
 
 ```bash
 docker buildx create --use --name redeploy-builder
 docker buildx inspect --bootstrap
 ```
 
-### 7.2 release 脚本报 "未检测到 docker login 状态"
+### 8.2 release 脚本报 "未检测到 docker login 状态"
 
 ```bash
 docker login -u pengfei2022
@@ -334,7 +397,7 @@ docker login -u pengfei2022
 
 Windows 下需要 Docker Desktop 已启动并登录。
 
-### 7.3 UI 下载 agent 二进制 404
+### 8.3 UI 下载 agent 二进制 404
 
 **症状**：服务端管理页面点击"下载 Agent"跳出 404。
 
@@ -343,7 +406,7 @@ Windows 下需要 Docker Desktop 已启动并登录。
 - Docker 部署：说明镜像里没打进去，检查 build 脚本是否成功执行了 agent 交叉编译；或者卷挂载 `./data:/app/data` 时被空的宿主目录覆盖了 —— 首次启动请让容器自己创建 `data` 目录，或手工把 agent 二进制放到宿主 `./data/agents/`。
 - 本地开发：跑 §5.1 的交叉编译命令。
 
-### 7.4 `REDEPLOY_ADMIN_TOKEN=changeme` 生产环境告警
+### 8.4 `REDEPLOY_ADMIN_TOKEN=changeme` 生产环境告警
 
 `changeme` 只是占位默认。生产环境部署前务必在 `.env` 或环境变量中设置为强随机值：
 
@@ -351,7 +414,7 @@ Windows 下需要 Docker Desktop 已启动并登录。
 openssl rand -base64 32
 ```
 
-### 7.5 首次启动 SSH 密钥丢失
+### 8.5 首次启动 SSH 密钥丢失
 
 如果没有设置 `REDEPLOY_SSH_ENCRYPTION_KEY`，容器**首次启动**会生成一个并打印到日志。请从日志中记录下来，写回 `.env`，避免容器重建后丢失导致旧数据无法解密。
 
@@ -359,7 +422,7 @@ openssl rand -base64 32
 docker compose logs redeploy-server | grep -i "ssh.*key\|encryption"
 ```
 
-### 7.6 端口 9006 被占用
+### 8.6 端口 9006 被占用
 
 修改 `docker-compose.yml`：
 
@@ -370,7 +433,7 @@ ports:
 
 或 `docker run` 时改 `-p 18006:9006`。
 
-### 7.7 release 中途失败如何回滚
+### 8.7 release 中途失败如何回滚
 
 脚本会在失败时打印回滚提示。手工场景：
 
