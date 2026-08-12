@@ -13,8 +13,8 @@ spring:
     password: ${MYSQL_PASSWORD:redeploy}
   sql:
     init:
-      mode: always
-#      schema-locations: classpath:schema.sql
+      mode: never
+      schema-locations: classpath:schema.sql
       data-locations: classpath:migration/*.sql
       continue-on-error: true
   jackson:

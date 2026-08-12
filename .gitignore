@@ -42,3 +42,5 @@ agent/vendor/
 release
 runtime
 *.jar
+
+*.sql
