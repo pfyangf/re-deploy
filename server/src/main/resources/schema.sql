@@ -132,4 +132,72 @@ CREATE TABLE `tasks`  (
                           PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
+-- ----------------------------
+-- Table structure for notification_config
+-- ----------------------------
+DROP TABLE IF EXISTS `notification_config`;
+CREATE TABLE `notification_config`  (
+                                        `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                                        `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                        `channel_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                        `channel_config` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                        `event_types` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                        `server_group_ids` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                        `task_template_ids` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                        `enabled` tinyint(1) NULL DEFAULT 1,
+                                        `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+                                        `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                        PRIMARY KEY (`id`) USING BTREE,
+                                        INDEX `idx_channel_type`(`channel_type` ASC) USING BTREE,
+                                        INDEX `idx_enabled`(`enabled` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for notification_history
+-- ----------------------------
+DROP TABLE IF EXISTS `notification_history`;
+CREATE TABLE `notification_history`  (
+                                         `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                                         `config_id` bigint(20) NULL DEFAULT NULL,
+                                         `event_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                         `server_id` bigint(20) NULL DEFAULT NULL,
+                                         `task_id` bigint(20) NULL DEFAULT NULL,
+                                         `deploy_history_id` bigint(20) NULL DEFAULT NULL,
+                                         `channel_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                         `target` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                         `payload` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                         `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                         `error_message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                         `sent_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+                                         PRIMARY KEY (`id`) USING BTREE,
+                                         INDEX `idx_config_id`(`config_id` ASC) USING BTREE,
+                                         INDEX `idx_event_type`(`event_type` ASC) USING BTREE,
+                                         INDEX `idx_sent_at`(`sent_at` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for download_session
+-- ----------------------------
+DROP TABLE IF EXISTS `download_session`;
+CREATE TABLE `download_session`  (
+                                     `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                                     `server_id` bigint(20) NOT NULL,
+                                     `remote_path` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                     `file_size` bigint(20) NULL DEFAULT NULL,
+                                     `bytes_received` bigint(20) NULL DEFAULT 0,
+                                     `md5` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                     `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                     `local_path` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                     `error_message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                     `initiator` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                     `initiator_ip` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                     `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+                                     `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                     `completed_at` timestamp NULL DEFAULT NULL,
+                                     PRIMARY KEY (`id`) USING BTREE,
+                                     INDEX `idx_server_id`(`server_id` ASC) USING BTREE,
+                                     INDEX `idx_status`(`status` ASC) USING BTREE,
+                                     INDEX `idx_created_at`(`created_at` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+
 SET FOREIGN_KEY_CHECKS = 1;

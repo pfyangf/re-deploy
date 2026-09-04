@@ -3,11 +3,13 @@ package com.redeploy.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.redeploy.model.DeployHistory;
 import com.redeploy.model.Server;
+import com.redeploy.model.SystemEvent;
 import com.redeploy.model.Task;
 import com.redeploy.repository.DeployHistoryMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.*;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.scheduling.annotation.Async;
@@ -33,7 +35,7 @@ public class DeployService {
     private FileTransferService fileTransferService;
 
     @Autowired
-    private AlertService alertService;
+    private ApplicationEventPublisher eventPublisher;
 
     @Autowired
     private JenkinsService jenkinsService;
@@ -60,6 +62,9 @@ public class DeployService {
         log.info("Starting deployment {} for task '{}' to {} servers",
                 history.getId(), task.getName(), servers.size());
 
+        // 发布 TASK_STARTED 事件
+        publishTaskStarted(history, task, servers);
+
         // Handle Jenkins artifact download if enabled
         File downloadedArtifact = null;
         if (Boolean.TRUE.equals(task.getJenkinsEnabled())) {
@@ -72,9 +77,8 @@ public class DeployService {
                 history.setErrorMessage("Jenkins is enabled but no build number provided");
                 history.setLogs("Jenkins enabled but missing build number, deployment aborted");
                 deployHistoryMapper.insert(history);
-                alertService.sendFailureAlert(history, Collections.singletonList(
-                        new DeployResult("all", false, "Missing build number for Jenkins-enabled task")
-                ));
+                publishTaskFailed(history, task, servers,
+                        new DeployResult("all", false, "Missing build number for Jenkins-enabled task"));
                 log.error("Deployment aborted: Jenkins enabled but no build number provided");
                 return;
             }
@@ -98,9 +102,8 @@ public class DeployService {
                 history.setErrorMessage("Failed to download artifact from Jenkins: " + e.getMessage());
                 history.setLogs("Jenkins download failed: " + e.getMessage());
                 deployHistoryMapper.insert(history);
-                alertService.sendFailureAlert(history, Collections.singletonList(
-                        new DeployResult("jenkins", false, e.getMessage())
-                ));
+                publishTaskFailed(history, task, servers,
+                        new DeployResult("jenkins", false, e.getMessage()));
                 return;
             }
         }
@@ -176,12 +179,71 @@ public class DeployService {
 
          deployHistoryMapper.update(history);
 
-        // Send alert on failure
-        if (!allSuccess) {
-            alertService.sendFailureAlert(history, results);
+        // 发布任务终态事件
+        if (allSuccess) {
+            publishTaskSuccess(history, task, servers, results);
+        } else {
+            publishTaskFailed(history, task, servers, results.toArray(new DeployResult[0]));
         }
 
         log.info("Deployment {} completed with status: {}", history.getId(), history.getStatus());
+    }
+
+    // ---- SystemEvent 发布辅助方法 ----
+
+    private void publishTaskStarted(DeployHistory history, Task task, List<Server> servers) {
+        try {
+            SystemEvent e = SystemEvent.of(SystemEvent.TYPE_TASK_STARTED);
+            e.setTask(task);
+            e.setHistory(history);
+            e.setServerIds(serverIdSet(servers));
+            eventPublisher.publishEvent(e);
+        } catch (Exception ex) {
+            log.warn("发布 TASK_STARTED 事件失败", ex);
+        }
+    }
+
+    private void publishTaskSuccess(DeployHistory history, Task task, List<Server> servers, List<DeployResult> results) {
+        try {
+            SystemEvent e = SystemEvent.of(SystemEvent.TYPE_TASK_SUCCESS);
+            e.setTask(task);
+            e.setHistory(history);
+            e.setServerIds(serverIdSet(servers));
+            e.setServerResults(resultMap(results));
+            eventPublisher.publishEvent(e);
+        } catch (Exception ex) {
+            log.warn("发布 TASK_SUCCESS 事件失败", ex);
+        }
+    }
+
+    private void publishTaskFailed(DeployHistory history, Task task, List<Server> servers, DeployResult... results) {
+        try {
+            SystemEvent e = SystemEvent.of(SystemEvent.TYPE_TASK_FAILED);
+            e.setTask(task);
+            e.setHistory(history);
+            e.setServerIds(serverIdSet(servers));
+            Map<String, Boolean> map = new LinkedHashMap<>();
+            for (DeployResult r : results) {
+                map.put(r.getServerName(), r.isSuccess());
+            }
+            e.setServerResults(map);
+            eventPublisher.publishEvent(e);
+        } catch (Exception ex) {
+            log.warn("发布 TASK_FAILED 事件失败", ex);
+        }
+    }
+
+    private static Set<Long> serverIdSet(List<Server> servers) {
+        if (servers == null) return Collections.emptySet();
+        Set<Long> ids = new HashSet<>();
+        for (Server s : servers) ids.add(s.getId());
+        return ids;
+    }
+
+    private static Map<String, Boolean> resultMap(List<DeployResult> results) {
+        Map<String, Boolean> map = new LinkedHashMap<>();
+        for (DeployResult r : results) map.put(r.getServerName(), r.isSuccess());
+        return map;
     }
 
     private DeployResult deployToServer(DeployHistory history, Task task, Server server, Map<String, String> params, File jenkinsArtifact) {

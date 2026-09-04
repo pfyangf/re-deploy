@@ -20,6 +20,21 @@ spring:
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
+  # 邮件通道（notification-management 启用 EmailChannel 时填，未启用可留空）
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:25}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_AUTH:true}
+          starttls.enable: ${SPRING_MAIL_STARTTLS:true}
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
@@ -43,12 +58,26 @@ redeploy:
   # SSH加密密钥（Base64编码，16/24/32字节对应AES-128/192/256）
   # 如果留空，启动时会自动生成并打印到日志，请务必保存
   ssh-encryption-key: ${REDEPLOY_SSH_ENCRYPTION_KEY:}
-  # 钉钉Webhook配置
+  # 钉钉Webhook配置（已废弃：见 notification-management-and-task-events 变更）
+  # 启动时 NotificationConfigMigrator 会读取这段并自动迁移到 notification_config 表。
+  # 下一版本移除，请尽快在「通知管理」页面校验并保存。
   dingtalk:
     enabled: ${REDEPLOY_DINGTALK_ENABLED:false}
     webhook-url: ${REDEPLOY_DINGTALK_WEBHOOK_URL:}
+    secret: ${REDEPLOY_DINGTALK_SECRET:}
     # 通知模式: failure-only, all
     notify-mode: ${REDEPLOY_DINGTALK_NOTIFY_MODE:failure-only}
+
+  # 通知管理
+  notification:
+    history-retention-days: ${REDEPLOY_NOTIFICATION_HISTORY_RETENTION_DAYS:30}
+
+  # 远端文件下载
+  download:
+    # 落盘根目录
+    dir: ${REDEPLOY_DOWNLOAD_DIR:./data/downloads}
+    # 已成功会话保留天数
+    retention-days: ${REDEPLOY_DOWNLOAD_RETENTION_DAYS:30}
 
 logging:
   level:

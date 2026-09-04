@@ -8,11 +8,12 @@ import (
 type ctxKey string
 
 const (
-	ctxKeyTaskID     ctxKey = "task_id"
-	ctxKeyStepIndex  ctxKey = "step_index"
-	ctxKeyUploadID   ctxKey = "upload_id"
-	ctxKeyRequestID  ctxKey = "request_id"
-	ctxKeyTaskLogger ctxKey = "task_logger"
+	ctxKeyTaskID      ctxKey = "task_id"
+	ctxKeyStepIndex   ctxKey = "step_index"
+	ctxKeyUploadID    ctxKey = "upload_id"
+	ctxKeyDownloadID  ctxKey = "download_id"
+	ctxKeyRequestID   ctxKey = "request_id"
+	ctxKeyTaskLogger  ctxKey = "task_logger"
 )
 
 func WithTaskID(ctx context.Context, taskID string) context.Context {
@@ -25,6 +26,10 @@ func WithStepIndex(ctx context.Context, stepIndex int) context.Context {
 
 func WithUploadID(ctx context.Context, uploadID string) context.Context {
 	return context.WithValue(ctx, ctxKeyUploadID, uploadID)
+}
+
+func WithDownloadID(ctx context.Context, downloadID string) context.Context {
+	return context.WithValue(ctx, ctxKeyDownloadID, downloadID)
 }
 
 func WithRequestID(ctx context.Context, requestID string) context.Context {
@@ -54,6 +59,9 @@ func FromContext(ctx context.Context) *slog.Logger {
 	}
 	if v, ok := ctx.Value(ctxKeyUploadID).(string); ok && v != "" {
 		attrs = append(attrs, "upload_id", v)
+	}
+	if v, ok := ctx.Value(ctxKeyDownloadID).(string); ok && v != "" {
+		attrs = append(attrs, "download_id", v)
 	}
 	if v, ok := ctx.Value(ctxKeyRequestID).(string); ok && v != "" {
 		attrs = append(attrs, "request_id", v)

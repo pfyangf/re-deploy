@@ -10,10 +10,14 @@
 .archon/
 .claude/
 .opencode/
+.workbuddy
+
 
 # Build artifacts
 server/target/
 frontend/node_modules/
+node_modules
+frontend/node_modules/*
 frontend/dist/
 agent/deploy-agent
 agent/deploy-agent-linux-amd64

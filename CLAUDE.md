@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+不要读取 frontend/node_modules/  frontend/dist/ 内的文件
+
 ## Project Overview
 
 Re-Deploy is an automated deployment platform with three components:

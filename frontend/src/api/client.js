@@ -64,4 +64,23 @@ export default {
   getArtifacts: () => api.get('/api/artifacts'),
   deleteArtifact: (id) => api.delete(`/api/artifacts/${id}`),
   downloadArtifact: (id) => `${API_BASE}/api/artifacts/${id}/download`,
+
+  // Notifications
+  getNotificationChannels: () => api.get('/api/notification/channels'),
+  getNotificationEventTypes: () => api.get('/api/notification/event-types'),
+  getNotificationConfigs: () => api.get('/api/notification/configs'),
+  createNotificationConfig: (data) => api.post('/api/notification/configs', data),
+  updateNotificationConfig: (id, data) => api.put(`/api/notification/configs/${id}`, data),
+  deleteNotificationConfig: (id) => api.delete(`/api/notification/configs/${id}`),
+  testNotificationConfig: (id, body) => api.post(`/api/notification/configs/${id}/test`, { body }),
+  getNotificationHistory: (params) => api.get('/api/notification/history', { params }),
+
+  // Remote file download
+  triggerRemoteDownload: (serverId, remotePath) => api.post(`/api/servers/${serverId}/download`, { remotePath }),
+  cancelRemoteDownload: (id) => api.post(`/api/downloads/${id}/cancel`),
+  deleteRemoteDownload: (id) => api.delete(`/api/downloads/${id}`),
+  getRemoteDownload: (id) => api.get(`/api/downloads/${id}`),
+  getRemoteDownloadFileUrl: (id) => `${API_BASE}/api/downloads/${id}/file`,
+  listRemoteDownloads: (params) => api.get('/api/downloads', { params }),
+  listServerDownloads: (serverId, params) => api.get(`/api/servers/${serverId}/downloads`, { params }),
 }

@@ -6,6 +6,8 @@ import Tasks from '../views/Tasks.vue'
 import Deploy from '../views/Deploy.vue'
 import History from '../views/History.vue'
 import Artifacts from '../views/Artifacts.vue'
+import Notifications from '../views/Notifications.vue'
+import Downloads from '../views/Downloads.vue'
 
 const routes = [
   {
@@ -53,6 +55,18 @@ const routes = [
     name: 'artifacts',
     component: Artifacts,
     meta: { title: '构建产物' }
+  },
+  {
+    path: '/notifications',
+    name: 'notifications',
+    component: Notifications,
+    meta: { title: '通知管理' }
+  },
+  {
+    path: '/downloads',
+    name: 'downloads',
+    component: Downloads,
+    meta: { title: '远端下载' }
   }
 ]
 

@@ -2,6 +2,8 @@
 
 Chinese-language project. Prefer Chinese in user-facing strings, docs, and commit messages. Code and identifiers stay English.
 
+不要读取 frontend/node_modules/  frontend/dist/ 内的文件 
+
 ## Structure
 
 Two independent components; there is **no root build file**. Build them separately.

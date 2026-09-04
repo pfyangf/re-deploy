@@ -2,7 +2,7 @@
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../store/app'
 import {
-  Odometer, Folder, Monitor, List, Promotion, Clock, Files
+  Odometer, Folder, Monitor, List, Promotion, Clock, Files, Bell, Download
 } from '@element-plus/icons-vue'
 
 const store = useAppStore()
@@ -16,6 +16,8 @@ const menuItems = [
   { index: '/deploy', title: '部署操作', icon: Promotion },
   { index: '/history', title: '部署历史', icon: Clock },
   { index: '/artifacts', title: '构建产物', icon: Files },
+  { index: '/notifications', title: '通知管理', icon: Bell },
+  { index: '/downloads', title: '远端下载', icon: Download },
 ]
 </script>
 

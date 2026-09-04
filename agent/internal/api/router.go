@@ -26,6 +26,7 @@ func NewServer(cfg *config.Config) *Server {
 		router: mux.NewRouter(),
 	}
 	s.setupRoutes()
+	s.startDownloadSessionCleanup()
 	return s
 }
 
@@ -47,6 +48,13 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/upload/{uploadId}/chunk", s.uploadChunkHandler).Methods("POST")
 	s.router.HandleFunc("/api/upload/{uploadId}/complete", s.uploadCompleteHandler).Methods("POST")
 	s.router.HandleFunc("/api/upload/{uploadId}/status", s.uploadStatusHandler).Methods("GET")
+
+	// Download endpoints (agent -> server file pull, server-initiated)
+	s.router.HandleFunc("/api/download/init", s.downloadInitHandler).Methods("POST")
+	s.router.HandleFunc("/api/download/{downloadId}/chunk", s.downloadChunkHandler).Methods("GET")
+	s.router.HandleFunc("/api/download/{downloadId}/status", s.downloadStatusHandler).Methods("GET")
+	s.router.HandleFunc("/api/download/{downloadId}/complete", s.downloadCompleteHandler).Methods("POST")
+	s.router.HandleFunc("/api/download/{downloadId}/cancel", s.downloadCancelHandler).Methods("POST")
 
 	// Task execution endpoints
 	s.router.HandleFunc("/api/task/execute", s.taskExecuteHandler).Methods("POST")
