@@ -38,11 +38,20 @@ public class SshSessionManager {
         String privateKey = null;
 
         if (sshEncryptionUtils != null) {
-            if (server.getSshPassword() != null && !server.getSshPassword().isEmpty()) {
-                password = sshEncryptionUtils.decrypt(server.getSshPassword());
-            }
-            if (server.getSshPrivateKey() != null && !server.getSshPrivateKey().isEmpty()) {
-                privateKey = sshEncryptionUtils.decrypt(server.getSshPrivateKey());
+            try {
+                if (server.getSshPassword() != null && !server.getSshPassword().isEmpty()) {
+                    password = sshEncryptionUtils.decrypt(server.getSshPassword());
+                }
+                if (server.getSshPrivateKey() != null && !server.getSshPrivateKey().isEmpty()) {
+                    privateKey = sshEncryptionUtils.decrypt(server.getSshPrivateKey());
+                }
+            } catch (RuntimeException e) {
+                // 典型场景：未配置 REDEPLOY_SSH_ENCRYPTION_KEY 时容器重启/升级导致自动密钥漂移，
+                // 数据库里的旧密文无法解密（BadPaddingException）
+                throw new IOException("SSH 凭据解密失败：加密密钥与保存凭据时不一致"
+                        + "（常见于未配置 REDEPLOY_SSH_ENCRYPTION_KEY 且服务重启/升级后密钥重新生成）。"
+                        + "请在「服务器管理」中重新编辑该服务器并填写 SSH 密码/私钥后保存；"
+                        + "若仍保留首次启动时打印的密钥，可将其配置为 REDEPLOY_SSH_ENCRYPTION_KEY 环境变量后重启服务。", e);
             }
         } else {
             password = server.getSshPassword();

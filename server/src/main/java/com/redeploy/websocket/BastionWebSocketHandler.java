@@ -41,50 +41,99 @@ public class BastionWebSocketHandler extends TextWebSocketHandler {
         String path = session.getUri().getPath();
         Long serverId = Long.parseLong(path.substring(path.lastIndexOf('/') + 1));
 
-        Server server = serverMapper.findById(serverId).orElse(null);
-        if (server == null || !hasSshConfig(server)) {
-            session.close();
-            return;
-        }
+        try {
+            Server server = serverMapper.findById(serverId).orElse(null);
+            if (server == null) {
+                closeWithError(session, "服务器不存在（id=" + serverId + "）");
+                return;
+            }
+            if (!hasSshConfig(server)) {
+                closeWithError(session, "该服务器未配置 SSH 用户名和密码/私钥，请先在「服务器管理」中完善 SSH 配置");
+                return;
+            }
 
-        // Connect SSH
-        Session sshSession = sshSessionManager.connect(server);
-        sshSessionManager.registerSession(session.getId(), sshSession);
+            // Connect SSH（解密失败 / 网络不通 / 认证失败都会在这里抛出）
+            Session sshSession = sshSessionManager.connect(server);
+            sshSessionManager.registerSession(session.getId(), sshSession);
 
-        // Open shell channel
-        ChannelShell channel = (ChannelShell) sshSession.openChannel("shell");
-        channel.setPtyType("xterm-256color");
-        session.getAttributes().put(ATTR_CHANNEL, channel);
+            // Open shell channel
+            ChannelShell channel = (ChannelShell) sshSession.openChannel("shell");
+            channel.setPtyType("xterm-256color");
+            session.getAttributes().put(ATTR_CHANNEL, channel);
 
-        // Start reading from SSH and sending to WebSocket
-        InputStream in = channel.getInputStream();
-        byte[] buffer = new byte[1024];
-        CompletableFuture.runAsync(() -> {
-            try {
-                int read;
-                while ((read = in.read(buffer)) != -1 && session.isOpen()) {
-                    byte[] data = new byte[read];
-                    System.arraycopy(buffer, 0, data, 0, read);
-                    synchronized (session) {
-                        session.sendMessage(new BinaryMessage(data));
+            // Start reading from SSH and sending to WebSocket
+            InputStream in = channel.getInputStream();
+            byte[] buffer = new byte[1024];
+            CompletableFuture.runAsync(() -> {
+                try {
+                    int read;
+                    while ((read = in.read(buffer)) != -1 && session.isOpen()) {
+                        byte[] data = new byte[read];
+                        System.arraycopy(buffer, 0, data, 0, read);
+                        synchronized (session) {
+                            session.sendMessage(new BinaryMessage(data));
+                        }
+                    }
+                } catch (IOException e) {
+                    // Connection closed normally
+                    try {
+                        if (session.isOpen()) {
+                            session.close();
+                        }
+                    } catch (IOException ex) {
+                        // Ignore
                     }
                 }
-            } catch (IOException e) {
-                // Connection closed normally
-                try {
-                    if (session.isOpen()) {
-                        session.close();
-                    }
-                } catch (IOException ex) {
-                    // Ignore
+            }, executor);
+
+            OutputStream out = channel.getOutputStream();
+            session.getAttributes().put(ATTR_OUTPUT, out);
+
+            channel.connect();
+        } catch (Exception e) {
+            log.error("SSH 终端连接失败, serverId={}", serverId, e);
+            sshSessionManager.closeSession(session.getId());
+            closeWithError(session, "连接 SSH 失败：" + rootMessage(e));
+        }
+    }
+
+    /**
+     * 把可读的错误信息以红色文字写入终端，然后带原因关闭 WebSocket，
+     * 避免异常直接抛出导致前端只看到无提示的断连。
+     */
+    private void closeWithError(WebSocketSession session, String message) {
+        String text = "\r\n\u001B[31m" + message + "\r\n请处理后重新打开终端。\u001B[0m\r\n";
+        try {
+            if (session.isOpen()) {
+                synchronized (session) {
+                    session.sendMessage(new TextMessage(text));
                 }
             }
-        }, executor);
+        } catch (IOException ex) {
+            log.warn("发送终端错误信息失败", ex);
+        }
+        try {
+            if (session.isOpen()) {
+                // CloseStatus reason 长度有限，截断兜底
+                String reason = message.length() > 100 ? message.substring(0, 100) : message;
+                session.close(CloseStatus.SERVER_ERROR.withReason(reason));
+            }
+        } catch (IOException ex) {
+            log.warn("关闭 WebSocket 失败", ex);
+        }
+    }
 
-        OutputStream out = channel.getOutputStream();
-        session.getAttributes().put(ATTR_OUTPUT, out);
-
-        channel.connect();
+    /** 取异常链中最有价值的一条消息（优先最底层 cause） */
+    private String rootMessage(Throwable e) {
+        Throwable cur = e;
+        while (cur.getCause() != null && cur.getCause() != cur) {
+            cur = cur.getCause();
+        }
+        String msg = cur.getMessage();
+        if (msg == null || msg.isEmpty()) {
+            msg = e.getMessage();
+        }
+        return msg != null ? msg : e.getClass().getSimpleName();
     }
 
     @Override

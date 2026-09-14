@@ -9,7 +9,7 @@ services:
       TZ: Asia/Shanghai
       # 运维Token（必填）—— 未设置时 compose 会拒绝启动
       REDEPLOY_ADMIN_TOKEN: ${REDEPLOY_ADMIN_TOKEN:?REDEPLOY_ADMIN_TOKEN 必须在 .env 或环境变量中设置}
-      # SSH 加密密钥（可选，为空则容器首启自动生成并打印到日志）
+      # SSH 加密密钥（可选；为空则首启自动生成并持久化到 ./data/secret/ssh-encryption.key，随数据卷保存）
       REDEPLOY_SSH_ENCRYPTION_KEY: ${REDEPLOY_SSH_ENCRYPTION_KEY:-}
       # 钉钉告警（可选）
       REDEPLOY_DINGTALK_ENABLED: ${REDEPLOY_DINGTALK_ENABLED:-false}

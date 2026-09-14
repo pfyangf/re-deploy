@@ -60,9 +60,16 @@ function initTerminal() {
     }
   }
 
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     if (terminal) {
-      terminal.write('\r\n\r\n--- 连接已关闭 ---')
+      const reason = event && event.reason ? '：' + event.reason : ''
+      terminal.write(`\r\n\r\n\u001B[33m--- 连接已关闭${reason} ---\u001B[0m`)
+    }
+  }
+
+  socket.onerror = () => {
+    if (terminal) {
+      terminal.write('\r\n\u001B[31m--- WebSocket 连接错误，请确认服务正常且已登录 ---\u001B[0m')
     }
   }
 

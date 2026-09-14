@@ -21,6 +21,13 @@ public class Server {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    /**
+     * 非持久化字段：仅用于 API 响应，标识该服务器是否已保存 SSH 密码/私钥。
+     * 密文不下发前端，前端据此判断能否打开终端及编辑时是否需要重新填写。
+     */
+    private transient boolean hasSshPassword;
+    private transient boolean hasSshPrivateKey;
+
     public Server() {}
 
     public Long getId() { return id; }
@@ -70,4 +77,10 @@ public class Server {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public boolean isHasSshPassword() { return hasSshPassword; }
+    public void setHasSshPassword(boolean hasSshPassword) { this.hasSshPassword = hasSshPassword; }
+
+    public boolean isHasSshPrivateKey() { return hasSshPrivateKey; }
+    public void setHasSshPrivateKey(boolean hasSshPrivateKey) { this.hasSshPrivateKey = hasSshPrivateKey; }
 }

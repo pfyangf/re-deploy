@@ -1,21 +1,25 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import api from '../api/client'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  groups: { type: Array, default: () => [] }
+  groups: { type: Array, default: () => [] },
+  // 传入服务器对象时为编辑模式；为 null 时为新增模式
+  server: { type: Object, default: null }
 })
 
 const emit = defineEmits(['update:modelValue', 'success'])
 
-const form = ref({
+const isEdit = computed(() => !!(props.server && props.server.id))
+
+const defaultForm = () => ({
   name: '',
   host: '',
   port: 9009,
   agentToken: '',
-  groupId: '',
+  groupId: props.groups[0]?.id || '',
   description: '',
   sshUsername: '',
   sshPassword: '',
@@ -23,24 +27,34 @@ const form = ref({
   sshPort: 22
 })
 
+const form = ref(defaultForm())
 const loading = ref(false)
 
 watch(() => props.modelValue, (visible) => {
   if (visible) {
-    form.value = {
-      name: '',
-      host: '',
-      port: 9009,
-      agentToken: '',
-      groupId: props.groups[0]?.id || '',
-      description: '',
-      sshUsername: '',
-      sshPassword: '',
-      sshPrivateKey: '',
-      sshPort: 22
+    if (isEdit.value && props.server) {
+      // 编辑模式：回填非敏感字段；密码/私钥密文不下发，留空表示不修改
+      form.value = {
+        id: props.server.id,
+        name: props.server.name || '',
+        host: props.server.host || '',
+        port: props.server.port || 9009,
+        agentToken: props.server.agentToken || '',
+        groupId: props.server.groupId || props.groups[0]?.id || '',
+        description: props.server.description || '',
+        sshUsername: props.server.sshUsername || '',
+        sshPassword: '',
+        sshPrivateKey: '',
+        sshPort: props.server.sshPort || 22
+      }
+    } else {
+      form.value = defaultForm()
     }
   }
 })
+
+const dialogTitle = computed(() => isEdit.value ? '编辑服务器' : '添加服务器')
+const submitText = computed(() => isEdit.value ? '保存' : '添加')
 
 function handleClose() {
   emit('update:modelValue', false)
@@ -60,12 +74,18 @@ async function handleSubmit() {
       sshPort: parseInt(form.value.sshPort),
       groupId: parseInt(form.value.groupId)
     }
-    await api.createServer(data)
-    ElMessage.success('添加成功')
+    if (isEdit.value) {
+      // 密码/私钥留空 → 后端保留原值；填写了新值才覆盖
+      await api.updateServer(form.value.id, data)
+      ElMessage.success('保存成功')
+    } else {
+      await api.createServer(data)
+      ElMessage.success('添加成功')
+    }
     emit('success')
     handleClose()
   } catch (error) {
-    ElMessage.error('添加失败')
+    ElMessage.error(isEdit.value ? '保存失败' : '添加失败')
     console.error(error)
   } finally {
     loading.value = false
@@ -76,7 +96,7 @@ async function handleSubmit() {
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="添加服务器"
+    :title="dialogTitle"
     width="700"
     :close-on-click-modal="false"
     @close="handleClose"
@@ -147,7 +167,12 @@ async function handleSubmit() {
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="SSH 密码">
-            <el-input v-model="form.sshPassword" type="password" show-password />
+            <el-input
+              v-model="form.sshPassword"
+              type="password"
+              show-password
+              :placeholder="isEdit ? (server.hasSshPassword ? '已配置，留空则不修改' : '未配置，留空则不修改') : '请输入 SSH 密码'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -156,7 +181,7 @@ async function handleSubmit() {
               v-model="form.sshPrivateKey"
               type="textarea"
               :rows="3"
-              placeholder="-----BEGIN RSA PRIVATE KEY-----..."
+              :placeholder="isEdit ? (server.hasSshPrivateKey ? '已配置，留空则不修改' : '未配置，留空则不修改') : '-----BEGIN RSA PRIVATE KEY-----...'"
             />
           </el-form-item>
         </el-col>
@@ -166,7 +191,7 @@ async function handleSubmit() {
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        添加
+        {{ submitText }}
       </el-button>
     </template>
   </el-dialog>

@@ -31,22 +31,41 @@ public class ServerController {
 
     @GetMapping
     public List<Server> listServers(@RequestParam(required = false) Long groupId) {
-        if (groupId != null) {
-            return serverMapper.findByGroupId(groupId);
-        }
-        return serverMapper.findAll();
+        List<Server> list = (groupId != null)
+                ? serverMapper.findByGroupId(groupId)
+                : serverMapper.findAll();
+        list.forEach(this::stripSensitive);
+        return list;
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Server> getServer(@PathVariable Long id) {
         return serverMapper.findById(id)
                 .map(server -> {
-                    // Never return encrypted sensitive fields in API response
-                    server.setSshPassword(null);
-                    server.setSshPrivateKey(null);
+                    stripSensitive(server);
                     return ResponseEntity.ok(server);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 脱敏：SSH 密码/私钥密文不下发前端，仅返回是否已配置的标志位。
+     */
+    private void stripSensitive(Server server) {
+        server.setHasSshPassword(server.getSshPassword() != null && !server.getSshPassword().isEmpty());
+        server.setHasSshPrivateKey(server.getSshPrivateKey() != null && !server.getSshPrivateKey().isEmpty());
+        server.setSshPassword(null);
+        server.setSshPrivateKey(null);
+    }
+
+    /**
+     * 根据 groupId 回填 group_name 冗余列（前端只传 groupId），避免 group_name 被写成 null。
+     */
+    private void fillGroupName(Server server) {
+        if (server.getGroupId() != null) {
+            groupMapper.findById(server.getGroupId())
+                    .ifPresent(g -> server.setGroupName(g.getName()));
+        }
     }
 
     @PostMapping
@@ -58,6 +77,7 @@ public class ServerController {
                 server.setGroupId(defaultGroup.getId());
             }
         }
+        fillGroupName(server);
         // Encrypt sensitive fields if they are provided and encryption is enabled
         if (sshEncryptionUtils != null) {
             if (server.getSshPassword() != null && !server.getSshPassword().isEmpty()) {
@@ -68,9 +88,7 @@ public class ServerController {
             }
         }
         serverMapper.insert(server);
-        // Clear sensitive fields before returning
-        server.setSshPassword(null);
-        server.setSshPrivateKey(null);
+        stripSensitive(server);
         return server;
     }
 
@@ -82,12 +100,13 @@ public class ServerController {
                     existing.setHost(server.getHost());
                     existing.setPort(server.getPort());
                     existing.setAgentToken(server.getAgentToken());
-                    existing.setGroupName(server.getGroupName());
                     existing.setGroupId(server.getGroupId());
+                    // 根据 groupId 回填 group_name（前端只传 groupId，直接取 server.groupName 会是 null）
+                    fillGroupName(existing);
                     existing.setDescription(server.getDescription());
                     existing.setSshUsername(server.getSshUsername());
                     existing.setSshPort(server.getSshPort());
-                    // Encrypt new sensitive values if provided
+                    // 密码/私钥：前端留空表示不修改，保留库中原有密文；填写了新值才加密覆盖
                     if (sshEncryptionUtils != null) {
                         if (server.getSshPassword() != null && !server.getSshPassword().isEmpty()) {
                             existing.setSshPassword(sshEncryptionUtils.encrypt(server.getSshPassword()));
@@ -97,9 +116,7 @@ public class ServerController {
                         }
                     }
                     serverMapper.update(existing);
-                    // Clear sensitive fields before returning
-                    existing.setSshPassword(null);
-                    existing.setSshPrivateKey(null);
+                    stripSensitive(existing);
                     return ResponseEntity.ok(existing);
                 })
                 .orElse(ResponseEntity.notFound().build());

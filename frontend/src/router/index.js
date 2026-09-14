@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import Groups from '../views/Groups.vue'
 import Servers from '../views/Servers.vue'
@@ -67,11 +67,18 @@ const routes = [
     name: 'downloads',
     component: Downloads,
     meta: { title: '远端下载' }
+  },
+  {
+    // 未匹配路由统一回到仪表盘，避免空白页
+    path: '/:pathMatch(.*)*',
+    redirect: '/dashboard'
   }
 ]
 
+// 使用 hash 模式（/#/servers）：刷新时浏览器只请求 /，Spring Boot 静态资源直接返回 index.html，
+// 不依赖服务端 SPA fallback，避免子路径刷新 404
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 })
 

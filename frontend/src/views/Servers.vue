@@ -19,6 +19,8 @@ const terminalDialogVisible = ref(false)
 const agentGuideVisible = ref(false)
 const currentDebugServerId = ref(null)
 const currentTerminalServerId = ref(null)
+// 正在编辑的服务器；null 表示新增模式
+const editingServer = ref(null)
 
 const filteredServers = computed(() => {
   if (!groupFilter.value) return servers.value
@@ -32,8 +34,8 @@ function getGroupName(groupId) {
 }
 
 function hasSshConfig(server) {
-  return (server.sshPassword && server.sshPassword.length > 0) ||
-         (server.sshPrivateKey && server.sshPrivateKey.length > 0)
+  // 密文不再下发，后端返回是否已配置的标志位
+  return !!(server.hasSshPassword || server.hasSshPrivateKey)
 }
 
 async function loadData() {
@@ -54,6 +56,12 @@ async function loadData() {
 }
 
 function handleAdd() {
+  editingServer.value = null
+  addDialogVisible.value = true
+}
+
+function handleEdit(server) {
+  editingServer.value = server
   addDialogVisible.value = true
 }
 
@@ -62,7 +70,7 @@ function openAgentGuide() {
 }
 
 function onGuideGotoAdd() {
-  addDialogVisible.value = true
+  handleAdd()
 }
 
 async function handleTest(server) {
@@ -109,6 +117,7 @@ async function handleDelete(server) {
 }
 
 function onDialogClose() {
+  editingServer.value = null
   loadData()
 }
 
@@ -188,7 +197,7 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="400" fixed="right">
+        <el-table-column label="操作" width="460" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" :icon="Connection" @click="handleTest(row)">
               测试
@@ -205,6 +214,9 @@ onMounted(() => {
             >
               终端
             </el-button>
+            <el-button text type="primary" :icon="Edit" @click="handleEdit(row)">
+              编辑
+            </el-button>
             <el-button text type="danger" :icon="Delete" @click="handleDelete(row)">
               删除
             </el-button>
@@ -216,6 +228,7 @@ onMounted(() => {
     <ServerDialog
       v-model="addDialogVisible"
       :groups="groups"
+      :server="editingServer"
       @success="onDialogClose"
     />
 
