@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Task execution via REST API
 The agent SHALL execute deployment tasks via REST API.

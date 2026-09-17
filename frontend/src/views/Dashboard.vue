@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import api from '../api/client'
 import { Cpu, Monitor, TrendCharts, CircleCheck } from '@element-plus/icons-vue'
 
@@ -11,11 +11,13 @@ const stats = ref({
 })
 
 const recentDeploys = ref([])
+const activeDeploys = ref([])
 const servers = ref([])
 const loading = ref(true)
+let refreshTimer = null
 
-async function loadData() {
-  loading.value = true
+async function loadData(silent = false) {
+  if (!silent) loading.value = true
   try {
     const [serversRes, historyRes] = await Promise.all([
       api.getServers(),
@@ -35,21 +37,48 @@ async function loadData() {
         ? Math.round((successCount / historyRes.length) * 100)
         : 0
       recentDeploys.value = historyRes.slice(0, 8)
+      // 部署队列：执行中 + 排队中，按提交先后（ID 升序）排列
+      activeDeploys.value = historyRes
+        .filter(h => h.status === 'running' || h.status === 'pending')
+        .sort((a, b) => a.id - b.id)
     }
   } catch (error) {
     console.error('Failed to load dashboard data:', error)
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
 function getStatusType(status) {
-  const map = { success: 'success', failed: 'danger', running: 'warning' }
+  const map = {
+    success: 'success',
+    failed: 'danger',
+    running: 'warning',
+    pending: 'info',
+    cancelled: 'info'
+  }
   return map[status] || 'info'
+}
+
+function getStatusText(status) {
+  const map = {
+    success: '成功',
+    failed: '失败',
+    running: '执行中',
+    pending: '排队中',
+    cancelled: '已取消'
+  }
+  return map[status] || status
 }
 
 onMounted(() => {
   loadData()
+  // 队列状态会随部署完成/排队转执行而变化，静默轮询避免遮罩闪烁
+  refreshTimer = setInterval(() => loadData(true), 5000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -125,6 +154,64 @@ onMounted(() => {
       </el-col>
     </el-row>
 
+    <!-- 部署队列：执行中 / 排队中 -->
+    <el-card shadow="never" class="queue-card">
+      <template #header>
+        <div class="card-header-title">
+          <el-icon><Timer /></el-icon>
+          <span>部署队列</span>
+          <el-tag
+            v-if="activeDeploys.some(d => d.status === 'pending')"
+            type="info"
+            size="small"
+            effect="plain"
+            round
+          >
+            排队中 {{ activeDeploys.filter(d => d.status === 'pending').length }}
+          </el-tag>
+          <el-tag
+            v-if="activeDeploys.some(d => d.status === 'running')"
+            type="warning"
+            size="small"
+            effect="plain"
+            round
+          >
+            执行中 {{ activeDeploys.filter(d => d.status === 'running').length }}
+          </el-tag>
+        </div>
+      </template>
+      <el-table :data="activeDeploys" stripe size="default" empty-text="当前没有执行中或排队中的部署">
+        <el-table-column prop="id" label="ID" width="80">
+          <template #default="{ row }">
+            <span class="font-mono text-sm">{{ row.id }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="任务" min-width="160">
+          <template #default="{ row }">
+            {{ row.taskName || (row.taskId ? '任务#' + row.taskId : '-') }}
+          </template>
+        </el-table-column>
+        <el-table-column label="版本" min-width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.version" type="info" effect="plain" size="small">{{ row.version }}</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" effect="light" round>
+              {{ getStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="提交时间" min-width="170">
+          <template #default="{ row }">
+            <span class="text-sm">{{ new Date(row.startedAt || row.createdAt).toLocaleString() }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
     <!-- 列表区域 -->
     <el-row :gutter="20" class="list-row">
       <el-col :xs="24" :lg="12">
@@ -179,7 +266,7 @@ onMounted(() => {
             <el-table-column label="状态" width="100" align="center">
               <template #default="{ row }">
                 <el-tag :type="getStatusType(row.status)" effect="light" round>
-                  {{ row.status }}
+                  {{ getStatusText(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -264,6 +351,11 @@ onMounted(() => {
 
 .list-row {
   margin-top: var(--spacing-4);
+}
+
+.queue-card {
+  margin-bottom: var(--spacing-4);
+  border-radius: var(--el-border-radius-round);
 }
 
 .list-card {

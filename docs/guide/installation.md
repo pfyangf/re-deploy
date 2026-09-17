@@ -54,6 +54,12 @@ sudo systemctl start deploy-agent
 sudo systemctl enable deploy-agent
 ```
 
+### 无 sudo 环境（nohup 便携模式）
+
+目标机不提供 sudo / root、无法写 `/opt` 或注册 systemd 服务时，Agent 可整体部署在普通用户家目录下，通过 `-c` 指定配置文件、以 nohup 方式后台运行，配置中的 `data_dir`、`log.dir` 缺省自动锚定到配置文件所在目录。
+
+详见 [Agent 无 sudo 部署指引](agent-rootless-deploy.md)，仓库 `scripts/agent/` 目录提供启停脚本与完整 `config.yaml` 模板。
+
 ### 卸载
 
 ```bash

@@ -200,4 +200,18 @@ CREATE TABLE `download_session`  (
                                      INDEX `idx_created_at`(`created_at` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
+-- ----------------------------
+-- Table structure for system_settings
+-- ----------------------------
+DROP TABLE IF EXISTS `system_settings`;
+CREATE TABLE `system_settings`  (
+                                    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                                    `setting_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                                    `setting_value` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+                                    `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+                                    `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                    PRIMARY KEY (`id`) USING BTREE,
+                                    UNIQUE INDEX `uk_setting_key`(`setting_key` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+
 SET FOREIGN_KEY_CHECKS = 1;

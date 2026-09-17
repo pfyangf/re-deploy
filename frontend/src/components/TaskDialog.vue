@@ -33,6 +33,20 @@ const form = ref({
 
 const loading = ref(false)
 
+// 前置/后置命令支持的模板变量（与 DeployService.buildServerParams 注入项保持一致）
+const templateVariables = [
+  { name: '{{deploy.id}}', desc: '本次部署记录号，每次部署唯一', example: '456' },
+  { name: '{{deploy.version}}', desc: '版本标识，未填时为空（Jenkins 任务默认 #构建号）', example: '#123' },
+  { name: '{{deploy.time}}', desc: '部署开始时间', example: '20260917-094500' },
+  { name: '{{deploy.timestamp}}', desc: '部署开始时间戳（秒）', example: '1758083100' },
+  { name: '{{task.id}}', desc: '任务 ID，配置固定不变', example: '7' },
+  { name: '{{task.name}}', desc: '任务名称', example: '网关部署' },
+  { name: '{{server.name}}', desc: '目标服务器名称，按每台目标分别取值', example: '录像合成服务器-dat' },
+  { name: '{{server.host}}', desc: '目标服务器 IP/主机名，按每台目标分别取值', example: '10.28.3.44' },
+  { name: '{{jenkinsBuildNumber}}', desc: 'Jenkins 构建号，部署时填写', example: '123' },
+  { name: '{{artifactFilename}}', desc: '制品文件名，Jenkins 任务自动注入', example: 'gateway-api.jar' }
+]
+
 watch(() => props.modelValue, (visible) => {
   if (visible) {
     if (props.task) {
@@ -125,7 +139,7 @@ const submitButtonText = computed(() => {
   <el-dialog
     :model-value="modelValue"
     :title="dialogTitle"
-    width="600"
+    width="1000"
     :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
@@ -173,6 +187,21 @@ const submitButtonText = computed(() => {
           :rows="2"
           placeholder="部署后执行的命令"
         />
+      </el-form-item>
+
+      <el-form-item label="可用变量">
+        <div class="var-panel">
+          <div class="hint">
+            前置/后置命令中使用 <span v-pre>{{变量名}}</span> 语法，部署时自动替换为实际值；未提供的变量保持原样。
+          </div>
+          <el-table :data="templateVariables" size="small" border max-height="220" class="var-table">
+            <el-table-column prop="name" label="变量" width="190">
+              <template #default="{ row }"><code class="var-code">{{ row.name }}</code></template>
+            </el-table-column>
+            <el-table-column prop="desc" label="说明" min-width="180" />
+            <el-table-column prop="example" label="示例" width="150" />
+          </el-table>
+        </div>
       </el-form-item>
 
       <el-form-item label="Jenkins 集成">
@@ -226,5 +255,16 @@ const submitButtonText = computed(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-top: 4px;
+}
+.var-panel {
+  width: 100%;
+}
+.var-table {
+  margin-top: 6px;
+}
+.var-code {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  color: var(--el-color-primary);
 }
 </style>

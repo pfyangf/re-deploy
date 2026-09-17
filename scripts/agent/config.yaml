@@ -1,0 +1,45 @@
+# re-deploy Agent 配置文件（无 sudo / nohup 便携模式）
+# 启动方式：./deploy-agent -c /绝对路径/config.yaml
+# 本文件与二进制、启停脚本放在同一目录；data_dir / log.dir 留空时
+# 自动使用本文件所在目录下的 data/ 与 log/（首次启动自动创建）
+
+# re-deploy 服务端地址（当前版本为预留字段，可暂时留空）
+server_url: http://<服务端IP或域名>:9006
+
+# Agent 鉴权 Token：【留空即可】首次启动时自动生成并回写本文件。
+# 启动后从 agent.out 提取：grep -A2 "Agent Token" agent.out
+# 也可直接查看本文件回填后的 token 字段
+token: ""
+
+# Agent 监听端口（在 re-deploy 服务端「服务器管理」页面注册时填写）
+port: 9009
+
+# 运行数据目录（制品 artifacts、上传分片 uploads、临时脚本 scripts）
+# 留空 = 本配置文件同级 data/
+data_dir: ""
+
+# 浏览器跨域来源：【必填】填实际访问 re-deploy 前端的地址（协议+域名+端口），
+# 例如 https://deploy.example.com:50002
+cors_origin: https://<你的前端访问地址>
+
+log:
+  # 运行时日志目录（结构化 JSON 日志 + tasks/ 每任务日志）
+  # 留空 = 本配置文件同级 log/
+  dir: ""
+  # 日志级别：debug / info / warn / error
+  level: info
+  # 日志保留天数，超期自动清理；0 = 永不清理
+  max_age_days: 30
+
+download:
+  # 是否允许 re-deploy 服务端从本机回拉文件（远程下载功能）
+  enabled: true
+  # 允许回拉的路径白名单（glob 模式，** 递归匹配）
+  # 按目标机应用的实际日志/产物位置修改，不要放 /etc、/root 等敏感路径
+  allowed_paths:
+    - /home/<用户名>/logs/**
+    - /tmp/redeploy-**
+  # 单个文件大小上限（字节），0 = 不限
+  max_file_size: 0
+  # 单次拉取会话有效期（秒），超时自动失效
+  session_ttl: 3600

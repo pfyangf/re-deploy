@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Structured logger initialization
 The agent SHALL initialize a structured JSON logger at startup using Go standard library `log/slog`, without introducing third-party logging dependencies.

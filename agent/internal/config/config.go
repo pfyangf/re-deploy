@@ -73,28 +73,61 @@ const (
 	defaultDownloadSessionTTL   = 3600
 )
 
-func Load() (*Config, error) {
-	configDir := "/opt/deploy-agent/conf"
-	if envDir := os.Getenv("AGENT_CONFIG_DIR"); envDir != "" {
-		configDir = envDir
-	}
+// Load 加载 agent 配置。
+// configPath 非空时进入便携模式：使用指定的 config.yaml，缺省 data/log 目录
+// 锚定到配置文件所在目录；configPath 为空时沿用传统逻辑
+// （AGENT_CONFIG_DIR 或 /opt/deploy-agent/conf）。
+func Load(configPath string) (*Config, error) {
+	portable := configPath != ""
 
-	configPath := filepath.Join(configDir, "config.yaml")
-	cfg := &Config{
-		ConfigPath: configPath,
-		Port:       9009,
-		DataDir:    "/opt/deploy-agent/data",
-		CorsOrigin: defaultCorsOrigin,
-		Log: LogConfig{
-			Dir:        defaultLogDir,
-			Level:      defaultLogLevel,
-			MaxAgeDays: defaultLogMaxAgeDays,
-		},
-		Download: DownloadConfig{
-			Enabled:      defaultDownloadEnabled,
-			AllowedPaths: splitAndTrim(defaultDownloadAllowedPaths),
-			SessionTTL:   defaultDownloadSessionTTL,
-		},
+	var cfg *Config
+	if portable {
+		// 便携模式：相对路径基于当前工作目录解析为绝对路径
+		absPath, err := filepath.Abs(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve config path %q: %w", configPath, err)
+		}
+		configPath = absPath
+		baseDir := filepath.Dir(absPath)
+		cfg = &Config{
+			ConfigPath: absPath,
+			Port:       9009,
+			DataDir:    filepath.Join(baseDir, "data"),
+			CorsOrigin: defaultCorsOrigin,
+			Log: LogConfig{
+				Dir:        filepath.Join(baseDir, "log"),
+				Level:      defaultLogLevel,
+				MaxAgeDays: defaultLogMaxAgeDays,
+			},
+			Download: DownloadConfig{
+				Enabled:      defaultDownloadEnabled,
+				AllowedPaths: splitAndTrim(defaultDownloadAllowedPaths),
+				SessionTTL:   defaultDownloadSessionTTL,
+			},
+		}
+	} else {
+		// 传统模式：环境变量覆盖默认配置目录
+		configDir := "/opt/deploy-agent/conf"
+		if envDir := os.Getenv("AGENT_CONFIG_DIR"); envDir != "" {
+			configDir = envDir
+		}
+		configPath = filepath.Join(configDir, "config.yaml")
+		cfg = &Config{
+			ConfigPath: configPath,
+			Port:       9009,
+			DataDir:    "/opt/deploy-agent/data",
+			CorsOrigin: defaultCorsOrigin,
+			Log: LogConfig{
+				Dir:        defaultLogDir,
+				Level:      defaultLogLevel,
+				MaxAgeDays: defaultLogMaxAgeDays,
+			},
+			Download: DownloadConfig{
+				Enabled:      defaultDownloadEnabled,
+				AllowedPaths: splitAndTrim(defaultDownloadAllowedPaths),
+				SessionTTL:   defaultDownloadSessionTTL,
+			},
+		}
 	}
 
 	// Check if config file exists
@@ -107,8 +140,8 @@ func Load() (*Config, error) {
 		cfg.Token = token
 		cfg.FirstRun = true
 
-		// Create config directory
-		if err := os.MkdirAll(configDir, 0755); err != nil {
+		// Create config directory（便携模式即配置文件所在目录）
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return nil, fmt.Errorf("failed to create config directory: %w", err)
 		}
 
@@ -130,8 +163,12 @@ func Load() (*Config, error) {
 
 		cfg.ServerURL = file.ServerURL
 		cfg.Token = file.Token
-		cfg.Port = file.Port
-		cfg.DataDir = file.DataDir
+		if file.Port > 0 {
+			cfg.Port = file.Port
+		}
+		if file.DataDir != "" {
+			cfg.DataDir = file.DataDir
+		}
 		if file.CorsOrigin != "" {
 			cfg.CorsOrigin = file.CorsOrigin
 		}
@@ -162,6 +199,19 @@ func Load() (*Config, error) {
 	// 默认白名单
 	if len(cfg.Download.AllowedPaths) == 0 {
 		cfg.Download.AllowedPaths = splitAndTrim(defaultDownloadAllowedPaths)
+	}
+
+	// 配置文件存在但 token 为空（如手工下发的配置模板）：补生成并回写
+	if cfg.Token == "" {
+		token, err := generateToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate token: %w", err)
+		}
+		cfg.Token = token
+		cfg.FirstRun = true
+		if err := cfg.Save(); err != nil {
+			return nil, fmt.Errorf("failed to save config: %w", err)
+		}
 	}
 
 	// Create data directory

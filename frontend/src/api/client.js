@@ -83,4 +83,8 @@ export default {
   getRemoteDownloadFileUrl: (id) => `${API_BASE}/api/downloads/${id}/file`,
   listRemoteDownloads: (params) => api.get('/api/downloads', { params }),
   listServerDownloads: (serverId, params) => api.get(`/api/servers/${serverId}/downloads`, { params }),
+
+  // System settings
+  getSystemSettings: () => api.get('/api/settings'),
+  updateSystemSettings: (data) => api.put('/api/settings', data),
 }

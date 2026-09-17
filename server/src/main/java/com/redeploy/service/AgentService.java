@@ -24,6 +24,9 @@ public class AgentService {
     @Autowired
     private AgentMapper agentMapper;
 
+    @Autowired
+    private AgentHttp agentHttp;
+
     private final RestTemplate restTemplate;
 
     public AgentService() {
@@ -112,23 +115,13 @@ public class AgentService {
         step.put("timeout", 60);
         request.put("steps", List.of(step));
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(server.getAgentToken());
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-
         Map<String, Object> result = new HashMap<>();
 
         try {
-            // 提交任务
+            // 提交任务（SHORT 档：connect/read 各 5s，与历史行为一致）
             log.info("[Agent] POST {} (executeCommand) command={}", executeUrl, command);
-            ResponseEntity<Map> response = restTemplate.postForEntity(executeUrl, entity, Map.class);
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                result.put("success", false);
-                result.put("error", "Request failed with status: " + response.getStatusCode());
-                return result;
-            }
-
-            String taskId = (String) response.getBody().get("task_id");
+            Map<?, ?> executeResp = agentHttp.postJson(executeUrl, server.getAgentToken(), request, Map.class, true);
+            String taskId = (String) executeResp.get("task_id");
             if (taskId == null) {
                 result.put("success", false);
                 result.put("error", "No task_id returned from agent");
@@ -138,20 +131,17 @@ public class AgentService {
             // 轮询任务状态直到完成（最多等待 65 秒，对应 step.timeout=60 + 5 秒缓冲）
             String statusUrl = baseUrl + "/api/task/" + taskId + "/status";
             log.info("[Agent] Polling {} taskId={}", statusUrl, taskId);
-            HttpHeaders statusHeaders = new HttpHeaders();
-            statusHeaders.setBearerAuth(server.getAgentToken());
-            HttpEntity<Void> statusEntity = new HttpEntity<>(statusHeaders);
 
             long deadline = System.currentTimeMillis() + 65000L;
             while (System.currentTimeMillis() < deadline) {
                 Thread.sleep(500);
-                ResponseEntity<Map> statusResp = restTemplate.exchange(
-                        statusUrl, HttpMethod.GET, statusEntity, Map.class
-                );
-                if (!statusResp.getStatusCode().is2xxSuccessful() || statusResp.getBody() == null) {
+                Map<?, ?> statusBody;
+                try {
+                    statusBody = agentHttp.getJson(statusUrl, server.getAgentToken(), Map.class, true);
+                } catch (Exception pollError) {
+                    // 单次轮询失败（4xx/5xx/网络）不立即终止，与历史行为一致
                     continue;
                 }
-                Map<String, Object> statusBody = statusResp.getBody();
                 String status = (String) statusBody.get("status");
                 if ("running".equals(status)) {
                     continue;

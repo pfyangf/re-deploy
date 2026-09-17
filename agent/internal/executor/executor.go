@@ -21,13 +21,25 @@ func NewExecutor(dataDir string) *Executor {
 	return &Executor{dataDir: dataDir}
 }
 
-func (e *Executor) ExecuteShell(ctx context.Context, command string, timeout int) (string, int, error) {
+// renderParams 做 {{key}} 字面量替换；未提供的 key 保持原样。
+func renderParams(command string, params map[string]string) string {
+	for key, value := range params {
+		command = strings.ReplaceAll(command, "{{"+key+"}}", value)
+	}
+	return command
+}
+
+func (e *Executor) ExecuteShell(ctx context.Context, command string, params map[string]string, timeout int) (string, int, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if timeout <= 0 {
 		timeout = 60 // Default 60 seconds
 	}
+
+	// 模板变量替换：与 ExecuteScript 相同的 {{key}} 字面量替换规则；
+	// 未提供的 key 保持原样，params 为 nil（UI 调试执行）时命令字节不变。
+	command = renderParams(command, params)
 
 	logger := logging.FromContext(ctx)
 	logger.Debug("shell exec start", "event", "executor.shell.start", "command", command, "timeout", timeout)
@@ -42,13 +54,15 @@ func (e *Executor) ExecuteShell(ctx context.Context, command string, timeout int
 		cmd = exec.CommandContext(runCtx, "sh", "-c", command)
 	}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// stdout/stderr 合流到同一 buffer，保留真实时间顺序。
+	// os/exec 对同一 writer（可比较且 == 相等）保证两个流不会并发 Write。
+	var outputBuf bytes.Buffer
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &outputBuf
 
 	err := cmd.Run()
 
-	output := stdout.String() + stderr.String()
+	output := outputBuf.String()
 
 	if runCtx.Err() == context.DeadlineExceeded {
 		logger.Debug("shell exec timeout", "event", "executor.shell.timeout", "timeout", timeout, "output_bytes", len(output))
@@ -71,9 +85,7 @@ func (e *Executor) ExecuteShell(ctx context.Context, command string, timeout int
 
 func (e *Executor) ExecuteScript(ctx context.Context, script string, params map[string]string, timeout int) (string, int, error) {
 	// Replace parameters in script
-	for key, value := range params {
-		script = strings.ReplaceAll(script, fmt.Sprintf("{{%s}}", key), value)
-	}
+	script = renderParams(script, params)
 
 	// Create temporary script file
 	scriptDir := filepath.Join(e.dataDir, "scripts")
@@ -87,5 +99,5 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, params map[
 	}
 	defer os.Remove(scriptFile)
 
-	return e.ExecuteShell(ctx, fmt.Sprintf("bash %s", scriptFile), timeout)
+	return e.ExecuteShell(ctx, fmt.Sprintf("bash %s", scriptFile), nil, timeout)
 }

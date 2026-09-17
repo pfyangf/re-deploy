@@ -87,7 +87,8 @@ public class DeployController {
             }
         }
         history.setVersion(version);
-        history.setStatus("running");
+        // 先落 pending：部署在专用线程池中按系统设置的并发数执行，超出的任务排队等待
+        history.setStatus("pending");
         history.setStartedAt(LocalDateTime.now());
         deployHistoryMapper.insert(history);
 
@@ -96,7 +97,7 @@ public class DeployController {
 
         return ResponseEntity.ok(Map.of(
             "deployId", history.getId(),
-            "status", "running"
+            "status", "pending"
         ));
     }
 
@@ -139,13 +140,14 @@ public class DeployController {
     public ResponseEntity<Map<String, String>> cancelDeploy(@PathVariable Long id) {
         return deployHistoryMapper.findById(id)
                 .map(history -> {
-                    if ("running".equals(history.getStatus())) {
-                        history.setStatus("cancelled");
-                        history.setCompletedAt(LocalDateTime.now());
-                        deployHistoryMapper.update(history);
+                    String status = history.getStatus();
+                    if ("running".equals(status) || "pending".equals(status)) {
+                        // pending：任务还在队列中，DeployService 取出时会检测到 cancelled 而跳过；
+                        // running：仅标记取消（执行中的轮询不中断，终态写回时不会覆盖取消状态）
+                        deployHistoryMapper.updateStatus(id, "cancelled", LocalDateTime.now());
                         return ResponseEntity.ok(Map.of("status", "cancelled"));
                     }
-                    return ResponseEntity.badRequest().body(Map.of("error", "Deploy is not running"));
+                    return ResponseEntity.badRequest().body(Map.of("error", "Deploy is not running or pending"));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }

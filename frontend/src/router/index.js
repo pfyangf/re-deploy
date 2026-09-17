@@ -8,6 +8,7 @@ import History from '../views/History.vue'
 import Artifacts from '../views/Artifacts.vue'
 import Notifications from '../views/Notifications.vue'
 import Downloads from '../views/Downloads.vue'
+import Settings from '../views/Settings.vue'
 
 const routes = [
   {
@@ -67,6 +68,12 @@ const routes = [
     name: 'downloads',
     component: Downloads,
     meta: { title: '远端下载' }
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: Settings,
+    meta: { title: '系统设置' }
   },
   {
     // 未匹配路由统一回到仪表盘，避免空白页

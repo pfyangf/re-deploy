@@ -35,6 +35,8 @@ func (s *Server) setupRoutes() {
 	s.router.Use(s.securityHeadersMiddleware)
 	// Auth middleware
 	s.router.Use(s.authMiddleware)
+	// 载荷加密（v1，X-Payload-Version 协商；挂在 auth 之后保证 401 为明文）
+	s.router.Use(s.payloadCryptoMiddleware)
 	s.router.Use(s.loggingMiddleware)
 
 	// Health check (no auth required)

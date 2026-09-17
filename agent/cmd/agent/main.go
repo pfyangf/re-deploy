@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,8 +14,19 @@ import (
 )
 
 func main() {
+	// 命令行参数
+	var configPath string
+	flag.StringVar(&configPath, "c", "", "配置文件 config.yaml 的路径（便携模式：data/log 缺省锚定该文件所在目录）")
+	flag.StringVar(&configPath, "config", "", "配置文件 config.yaml 的路径（同 -c）")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "用法: %s [-c <config.yaml 路径>]\n\n", os.Args[0])
+		fmt.Fprintln(flag.CommandLine.Output(), "不指定 -c 时使用传统模式：$AGENT_CONFIG_DIR/config.yaml 或 /opt/deploy-agent/conf/config.yaml")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
 	// Load configuration
-	cfg, err := config.Load()
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)

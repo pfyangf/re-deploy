@@ -34,6 +34,11 @@ public interface DeployHistoryMapper {
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(DeployHistory history);
 
+    @Update("UPDATE deploy_history SET status=#{status}, completed_at=#{completedAt} WHERE id=#{id}")
+    int updateStatus(@Param("id") Long id,
+                     @Param("status") String status,
+                     @Param("completedAt") LocalDateTime completedAt);
+
     @Update("UPDATE deploy_history SET status=#{status}, completed_at=#{completedAt}, " +
             "error_message=#{errorMessage}, logs=#{logs}, detail_logs=#{detailLogs} WHERE id=#{id}")
     int update(DeployHistory history);

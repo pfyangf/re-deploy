@@ -11,10 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.*;
-import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.File;
 import java.time.LocalDateTime;
@@ -43,22 +41,22 @@ public class DeployService {
     @Autowired
     private ArtifactService artifactService;
 
-    private final RestTemplate restTemplate = createRestTemplate();
+    @Autowired
+    private AgentHttp agentHttp;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
-    private static RestTemplate createRestTemplate() {
-        RestTemplate rt = new RestTemplate();
-        // 强制 StringHttpMessageConverter 用 UTF-8，避免 agent 返回的 ndjson 中文被按 ISO-8859-1 解码乱码
-        rt.getMessageConverters().stream()
-                .filter(c -> c instanceof StringHttpMessageConverter)
-                .map(c -> (StringHttpMessageConverter) c)
-                .forEach(c -> c.setDefaultCharset(java.nio.charset.StandardCharsets.UTF_8));
-        return rt;
-    }
-
-    @Async
+    @Async("deployExecutor")
     public void deploy(DeployHistory history, Task task, List<Server> servers, Map<String, String> params) {
+        // 任务此时才真正从部署线程池队列取出执行。排队期间可能已被取消：
+        if (isCancelled(history.getId())) {
+            log.info("Deployment {} was cancelled while queued, skipping", history.getId());
+            return;
+        }
+        history.setStatus("running");
+        deployHistoryMapper.updateStatus(history.getId(), "running", null);
+
         log.info("Starting deployment {} for task '{}' to {} servers",
                 history.getId(), task.getName(), servers.size());
 
@@ -138,7 +136,13 @@ public class DeployService {
             }
         }
 
-         // Update history (already inserted by controller with status 'running')
+         // 执行期间可能已被用户取消：不覆盖终态、不发结果事件
+         if (isCancelled(history.getId())) {
+             log.info("Deployment {} was cancelled, skip final status update", history.getId());
+             return;
+         }
+
+         // Update history (controller 以 pending 落库，执行开始时已转为 running)
          history.setStatus(allSuccess ? "success" : "failed");
          history.setCompletedAt(LocalDateTime.now());
 
@@ -187,6 +191,12 @@ public class DeployService {
         }
 
         log.info("Deployment {} completed with status: {}", history.getId(), history.getStatus());
+    }
+
+    private boolean isCancelled(Long deployId) {
+        return deployHistoryMapper.findById(deployId)
+                .map(h -> "cancelled".equals(h.getStatus()))
+                .orElse(false);
     }
 
     // ---- SystemEvent 发布辅助方法 ----
@@ -246,10 +256,39 @@ public class DeployService {
         return map;
     }
 
+    private static final java.time.format.DateTimeFormatter DEPLOY_TIME_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+    private static final java.time.ZoneId DEPLOY_ZONE = java.time.ZoneId.of("Asia/Shanghai");
+
+    /**
+     * 构造单台目标服务器的模板参数：保留用户参数（jenkinsBuildNumber 等），
+     * 注入 deploy、task、server 命名空间下的内置变量。每台机器返回独立 map。
+     */
+    static Map<String, String> buildServerParams(Map<String, String> userParams,
+                                                 DeployHistory history, Task task, Server server) {
+        Map<String, String> p = new HashMap<>();
+        if (userParams != null) {
+            p.putAll(userParams);
+        }
+        LocalDateTime started = history.getStartedAt() != null ? history.getStartedAt() : LocalDateTime.now();
+        p.put("deploy.id", String.valueOf(history.getId()));
+        p.put("deploy.version", history.getVersion() != null ? history.getVersion() : "");
+        p.put("deploy.time", started.format(DEPLOY_TIME_FMT));
+        p.put("deploy.timestamp", String.valueOf(started.atZone(DEPLOY_ZONE).toEpochSecond()));
+        p.put("task.id", String.valueOf(task.getId()));
+        p.put("task.name", task.getName() != null ? task.getName() : "");
+        p.put("server.name", server.getName() != null ? server.getName() : "");
+        p.put("server.host", server.getHost() != null ? server.getHost() : "");
+        return p;
+    }
+
     private DeployResult deployToServer(DeployHistory history, Task task, Server server, Map<String, String> params, File jenkinsArtifact) {
         String serverName = server.getName();
         try {
             log.info("Deploying to server: {}", serverName);
+
+            // 每台目标服务器独立一份参数（内置变量按机注入，避免并行部署共享/并发改写同一 HashMap）
+            params = buildServerParams(params, history, task, server);
 
             // If we have a Jenkins artifact, upload it to the agent
             if (jenkinsArtifact != null) {
@@ -273,9 +312,6 @@ public class DeployService {
                 }
 
                 // Add artifact filename to params for deploy step
-                if (params == null) {
-                    params = new HashMap<>();
-                }
                 params.put("artifactFilename", filename);
             }
 
@@ -289,28 +325,15 @@ public class DeployService {
             request.put("steps", steps);
             request.put("params", params != null ? params : new HashMap<>());
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + server.getAgentToken());
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-
             String url = String.format("http://%s:%d/api/task/execute", server.getHost(), server.getPort());
             log.info("[Deploy] POST {} task={} steps={} params={}", url, task.getName(), steps.size(), request.get("params"));
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+            Map<?, ?> executeResp = agentHttp.postJson(url, server.getAgentToken(), request, Map.class);
+            String taskId = (String) executeResp.get("task_id");
 
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                String taskId = (String) response.getBody().get("task_id");
-
-                // Poll for task completion
-                DeployResult result = pollTaskStatus(server, taskId, serverName);
-                result.setServerHost(server.getHost());
-                return result;
-            }
-
-            DeployResult fail = new DeployResult(serverName, false, "Failed to start task on agent");
-            fail.setServerHost(server.getHost());
-            return fail;
+            // Poll for task completion
+            DeployResult result = pollTaskStatus(server, taskId, serverName);
+            result.setServerHost(server.getHost());
+            return result;
 
         } catch (Exception e) {
             log.error("Failed to deploy to server {}: {}", serverName, e.getMessage());
@@ -325,37 +348,31 @@ public class DeployService {
                 server.getHost(), server.getPort(), taskId);
         log.info("[Deploy] Polling task status url={} taskId={}", url, taskId);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + server.getAgentToken());
-
         int maxAttempts = 600; // 10 minutes with 1 second intervals
         for (int i = 0; i < maxAttempts; i++) {
             try {
                 Thread.sleep(1000);
 
-                HttpEntity<Void> entity = new HttpEntity<>(headers);
-                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+                Map<?, ?> body = agentHttp.getJson(url, server.getAgentToken(), Map.class);
 
-                if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                    Map<String, Object> body = response.getBody();
-                    String status = (String) body.get("status");
+                String status = (String) body.get("status");
 
-                    if ("success".equals(status)) {
-                        DeployResult result = new DeployResult(serverName, true, "Deployment successful");
-                        result.setTaskLogs(fetchTaskLogs(server, taskId));
-                        return result;
-                    } else if ("failed".equals(status)) {
-                        String error = (String) body.getOrDefault("error", "Unknown error");
-                        DeployResult result = new DeployResult(serverName, false, error);
-                        result.setTaskLogs(fetchTaskLogs(server, taskId));
-                        return result;
-                    } else if ("cancelled".equals(status)) {
-                        DeployResult result = new DeployResult(serverName, false, "Deployment cancelled");
-                        result.setTaskLogs(fetchTaskLogs(server, taskId));
-                        return result;
-                    }
-                    // Still running, continue polling
+                if ("success".equals(status)) {
+                    DeployResult result = new DeployResult(serverName, true, "Deployment successful");
+                    result.setTaskLogs(fetchTaskLogs(server, taskId));
+                    return result;
+                } else if ("failed".equals(status)) {
+                    Object errorVal = body.get("error");
+                    String error = errorVal != null ? (String) errorVal : "Unknown error";
+                    DeployResult result = new DeployResult(serverName, false, error);
+                    result.setTaskLogs(fetchTaskLogs(server, taskId));
+                    return result;
+                } else if ("cancelled".equals(status)) {
+                    DeployResult result = new DeployResult(serverName, false, "Deployment cancelled");
+                    result.setTaskLogs(fetchTaskLogs(server, taskId));
+                    return result;
                 }
+                // Still running, continue polling
             } catch (Exception e) {
                 log.warn("Error polling task status: {}", e.getMessage());
             }
@@ -374,17 +391,11 @@ public class DeployService {
         String url = String.format("http://%s:%d/api/task/%s/logs",
                 server.getHost(), server.getPort(), taskId);
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + server.getAgentToken());
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-            if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
-                return "[agent 版本过低，无日志]";
-            }
-            if (response.getBody() == null || response.getBody().isEmpty()) {
+            String body = agentHttp.getText(url, server.getAgentToken());
+            if (body == null || body.isEmpty()) {
                 return "(无日志记录)";
             }
-            return formatNdjsonLogs(response.getBody());
+            return formatNdjsonLogs(body);
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             return "[agent 版本过低，无日志]";
         } catch (Exception e) {

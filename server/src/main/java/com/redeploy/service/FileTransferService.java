@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.util.JSONPObject;
 import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
@@ -30,6 +31,10 @@ public class FileTransferService {
     private static final Logger log = LoggerFactory.getLogger(FileTransferService.class);
     private static final int CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 
+    @Autowired
+    private AgentHttp agentHttp;
+
+    // 仅用于 chunk 分片上传：multipart 明文直发，严禁带 X-Payload-Version（agent 端 /chunk 豁免加密）
     private final RestTemplate restTemplate = new RestTemplate();
 
     public boolean uploadFileToAgent(String agentHost, int agentPort, String agentToken,
@@ -42,32 +47,19 @@ public class FileTransferService {
             long fileSize = file.length();
 
             // Init request is JSON, not multipart (agent expects JSON)
-            HttpHeaders headers = createHeaders(agentToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
             Map<String, Object> initRequest = new HashMap<>();
             initRequest.put("filename", filename);
             initRequest.put("file_size", fileSize);
             initRequest.put("md5", md5);
 
-            HttpEntity<Map<String, Object>> initEntity = new HttpEntity<>(initRequest, headers);
             String initUrl = baseUrl + "/api/upload/init";
             log.info("[Upload] POST {} filename={} size={} md5={}", initUrl, filename, fileSize, md5);
-            ResponseEntity<UploadInitResponse> initResponse = restTemplate.exchange(
-                    initUrl,
-                    HttpMethod.POST,
-                    initEntity,
-                    UploadInitResponse.class
-            );
-            log.info("[Upload] POST {} response={}", initUrl, initResponse.getBody());
+            UploadInitResponse initResponse =
+                    agentHttp.postJson(initUrl, agentToken, initRequest, UploadInitResponse.class);
+            log.info("[Upload] POST {} response uploadId={}", initUrl, initResponse.getUploadId());
 
-            if (initResponse.getStatusCode() != HttpStatus.OK || initResponse.getBody() == null) {
-                log.error("[Upload] Failed to initialize upload to agent, url={}", initUrl);
-                return false;
-            }
-
-            String uploadId = initResponse.getBody().getUploadId();
-            int chunkSize = initResponse.getBody().getChunkSize();
+            String uploadId = initResponse.getUploadId();
+            int chunkSize = initResponse.getChunkSize();
             if (chunkSize <= 0) {
                 chunkSize = CHUNK_SIZE;
             }
@@ -126,21 +118,10 @@ public class FileTransferService {
                 return false;
             }
 
-            // Step 3: Complete upload
-            HttpEntity<Void> completeEntity = new HttpEntity<>(createHeaders(agentToken));
+            // Step 3: Complete upload（空 body，AgentHttp 仍带版本头并解密响应）
             String completeUrl = baseUrl + "/api/upload/" + uploadId + "/complete";
             log.info("[Upload] POST {} totalChunks={}", completeUrl, seq);
-            ResponseEntity<String> completeResponse = restTemplate.exchange(
-                    completeUrl,
-                    HttpMethod.POST,
-                    completeEntity,
-                    String.class
-            );
-
-            if (completeResponse.getStatusCode() != HttpStatus.OK) {
-                log.error("[Upload] Failed to complete upload to agent, url={}", completeUrl);
-                return false;
-            }
+            agentHttp.postEmpty(completeUrl, agentToken);
 
             log.info("Successfully uploaded file {} to agent", filename);
             return true;
@@ -179,7 +160,7 @@ public class FileTransferService {
     }
 
     @ToString
-    private static class UploadInitResponse {
+    static class UploadInitResponse {
         private String upload_id;
         private int chunk_size;
 

@@ -216,7 +216,9 @@ async function handleSubmit() {
     }
     const result = await api.createDeploy(requestData)
     if (result && result.deployId) {
-      ElMessage.success(`部署已启动，ID: ${result.deployId}`)
+      ElMessage.success(
+        (result.status === 'pending' ? '部署已排队，ID: ' : '部署已启动，ID: ') + result.deployId
+      )
       router.push('/history')
     }
   } catch (error) {

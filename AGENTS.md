@@ -75,7 +75,7 @@ GOOS=linux GOARCH=arm64 go build -o deploy-agent-linux-arm64 ./cmd/agent
 
 Two independent bearer tokens:
 - `redeploy.admin-token` in `application.yml` — used by Jenkins / external callers hitting the **server**.
-- Per-agent token auto-generated on **first agent run** and persisted to `/opt/deploy-agent/conf/config.yaml` (override dir via `AGENT_CONFIG_DIR` env var). Printed once to agent stdout / journalctl on first boot. Must be registered on the server's server-management page.
+- Per-agent token auto-generated on **first agent run** and persisted to `/opt/deploy-agent/conf/config.yaml` (override dir via `AGENT_CONFIG_DIR` env var; rootless/nohup deployments pass `-c <dir>/config.yaml` and the token lives at that config path). An existing config with empty `token` is backfilled on next start. Printed once to agent stdout / journalctl / `agent.out` on first boot. Must be registered on the server's server-management page. See `docs/guide/agent-rootless-deploy.md`.
 
 ## Deploy flow gotchas
 
@@ -84,10 +84,11 @@ Two independent bearer tokens:
 - Agent `executor.ExecuteShell` runs commands via `sh -c` on Linux, `cmd /C` on Windows, gated by env `GOOS` — not runtime OS. Do not rely on it for Windows detection.
 - The Linux install script is embedded as a Java string literal in `AgentDownloadController.getInstallScript()`. Editing the install flow means editing that method, not `scripts/`.
 - Per-task 日志：agent 执行 task 时同时写 `{log.dir}/agent-YYYY-MM-DD.log`（daily，所有 task 混写）和 `{log.dir}/tasks/{taskID}.log`（per-task 独立文件）。`GET /api/task/{taskId}/logs` 返回 per-task 文件内容（ndjson）。server 在 `pollTaskStatus` 拿到终态后拉取各 server 的 task 日志，按 `===== [name host] =====` 分段聚合存入 `deploy_history.detail_logs`，前端详情页按分段渲染。老 agent 无此端点时该段标 `[agent 版本过低，无日志]`。
+- server↔agent 的 JSON 类调用统一走 `AgentHttp`：默认 AES-256-GCM 载荷加密（协议 v1，头 `X-Payload-Version: 1`，密钥 `SHA-256(UTF-8(agent token))`，AAD=`METHOD PATH`），开关 `redeploy.agent.payload-encryption` / `REDEPLOY_AGENT_PAYLOAD_ENCRYPTION`。agent 双栈（无头=明文）；`/chunk` 分片端点双向豁免，FileTransferService 的 multipart chunk 必须直发且不能带头。升级顺序：先 agent 后 server，混合机队用开关回退。跨语言金标向量在 `agent/internal/security/payload_test.go` 与 `AgentPayloadCryptoTest`。
 
 ## Repo conventions
 
 - Chinese comments and docstrings are the norm; keep that style when editing existing files.
 - Timezone in Jackson is fixed to `Asia/Shanghai`.
-- Server logs → `./logs/redeploy-server.log`; agent lifecycle logs → systemd journal (`journalctl -u deploy-agent`); agent **runtime logs** (structured JSON, one line per event, with `task_id` / `step_index` / `upload_id` / `request_id` fields) → `/opt/deploy-agent/log/agent-YYYY-MM-DD.log` (rotated daily, 30-day retention by default; configurable via `log.dir` / `log.level` / `log.max_age_days` in `config.yaml`).
+- Server logs → `./logs/redeploy-server.log`; agent lifecycle logs → systemd journal (`journalctl -u deploy-agent`); agent **runtime logs** (structured JSON, one line per event, with `task_id` / `step_index` / `upload_id` / `request_id` fields) → `/opt/deploy-agent/log/agent-YYYY-MM-DD.log` in legacy mode, or `<部署目录>/log/agent-YYYY-MM-DD.log` in portable `-c` mode (rotated daily, 30-day retention by default; configurable via `log.dir` / `log.level` / `log.max_age_days` in `config.yaml`).
 - When adding a new capability, follow the OpenSpec flow: propose under `openspec/changes/<name>/` first; check `openspec/changes/re-deploy-tool/` for the reference structure.

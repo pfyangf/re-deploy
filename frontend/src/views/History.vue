@@ -37,8 +37,25 @@ async function loadHistory() {
 }
 
 function getStatusType(status) {
-  const map = { success: 'success', failed: 'danger', running: 'warning' }
+  const map = {
+    success: 'success',
+    failed: 'danger',
+    running: 'warning',
+    pending: 'info',
+    cancelled: 'info'
+  }
   return map[status] || 'info'
+}
+
+function getStatusText(status) {
+  const map = {
+    success: '成功',
+    failed: '失败',
+    running: '执行中',
+    pending: '排队中',
+    cancelled: '已取消'
+  }
+  return map[status] || status
 }
 
 async function viewDetail(item) {
@@ -94,7 +111,7 @@ onMounted(() => {
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" effect="light" round>
-              {{ row.status }}
+              {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -131,7 +148,7 @@ onMounted(() => {
             <el-descriptions-item label="任务">{{ detailData.taskName || (detailData.taskId ? '任务#' + detailData.taskId : '-') }}</el-descriptions-item>
             <el-descriptions-item label="版本">{{ detailData.version || '-' }}</el-descriptions-item>
             <el-descriptions-item label="状态">
-              <el-tag :type="getStatusType(detailData.status)" effect="light" round size="small">{{ detailData.status }}</el-tag>
+              <el-tag :type="getStatusType(detailData.status)" effect="light" round size="small">{{ getStatusText(detailData.status) }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="开始">{{ detailData.startedAt ? new Date(detailData.startedAt).toLocaleString() : '-' }}</el-descriptions-item>
             <el-descriptions-item label="完成">{{ detailData.completedAt ? new Date(detailData.completedAt).toLocaleString() : '-' }}</el-descriptions-item>

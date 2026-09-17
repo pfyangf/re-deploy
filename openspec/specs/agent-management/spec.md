@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Agent auto-registration
 The agent SHALL automatically register with the server on startup.

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Agent HTTP 服务 SHALL 配置慢速请求超时
 

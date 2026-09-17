@@ -216,7 +216,7 @@ func (s *Server) executeTask(ctx context.Context, execution *TaskExecution, step
 
 		switch step.Type {
 		case "shell", "command":
-			output, exitCode, err = exec.ExecuteShell(stepCtx, step.Command, step.Timeout)
+			output, exitCode, err = exec.ExecuteShell(stepCtx, step.Command, params, step.Timeout)
 		case "script":
 			output, exitCode, err = exec.ExecuteScript(stepCtx, step.Script, params, step.Timeout)
 		case "deploy":

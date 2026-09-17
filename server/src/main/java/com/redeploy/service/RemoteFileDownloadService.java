@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -52,6 +51,7 @@ public class RemoteFileDownloadService {
 
     @Autowired private DownloadSessionMapper downloadMapper;
     @Autowired private ServerMapper serverMapper;
+    @Autowired private AgentHttp agentHttp;
 
     /**
      * 自注入代理：@Async 只在经过 Spring 代理调用时生效，类内直接调用 runDownload()
@@ -80,20 +80,13 @@ public class RemoteFileDownloadService {
         Map<String, Object> req = new HashMap<>();
         req.put("remote_path", remotePath);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(server.getAgentToken());
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(req, headers);
-
         try {
-            RestTemplate rt = new RestTemplate();
-            ResponseEntity<DownloadInitResponse> resp = rt.exchange(
-                    url, HttpMethod.POST, entity, DownloadInitResponse.class);
+            DownloadInitResponse body = agentHttp.postJson(
+                    url, server.getAgentToken(), req, DownloadInitResponse.class);
 
-            if (resp.getBody() == null) {
+            if (body == null) {
                 throw new IllegalStateException("agent returned empty body");
             }
-            DownloadInitResponse body = resp.getBody();
             if (!"DOWNLOADING".equals(body.getStatus()) && body.getDownloadId() == null) {
                 throw new IllegalStateException("agent rejected: " + body);
             }
