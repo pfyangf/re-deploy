@@ -134,8 +134,9 @@ onUnmounted(() => {
 
 <style scoped>
 .terminal-container {
-  background: #000;
+  background: var(--rd-surface-terminal);
   padding: var(--spacing-3);
+  border: 1px solid var(--rd-border-console);
   border-radius: var(--el-border-radius-base);
   min-height: 480px;
 }

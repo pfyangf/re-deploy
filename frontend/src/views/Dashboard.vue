@@ -362,16 +362,4 @@ onUnmounted(() => {
   margin-bottom: var(--spacing-4);
   border-radius: var(--el-border-radius-round);
 }
-
-.card-header-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.text-sm {
-  font-size: var(--text-sm);
-}
 </style>

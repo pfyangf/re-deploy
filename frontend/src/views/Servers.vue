@@ -197,7 +197,7 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="460" fixed="right">
+        <el-table-column label="操作" width="500" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" :icon="Connection" @click="handleTest(row)">
               测试
@@ -248,37 +248,3 @@ onMounted(() => {
     />
   </div>
 </template>
-
-<style scoped>
-.page-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.page-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--spacing-3);
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: var(--spacing-3);
-  align-items: center;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  letter-spacing: -0.02em;
-}
-
-.table-card {
-  border-radius: var(--el-border-radius-round);
-}
-</style>

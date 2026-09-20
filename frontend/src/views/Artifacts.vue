@@ -97,7 +97,7 @@ onMounted(() => {
             <span class="text-sm">{{ new Date(row.uploadedAt).toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button
               text
@@ -123,38 +123,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.page-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  letter-spacing: -0.02em;
-}
-
-.table-card {
-  border-radius: var(--el-border-radius-round);
-}
-
-.fw-medium {
-  font-weight: 500;
-}
-
-.text-sm {
-  font-size: var(--text-sm);
-}
-
 .md5-code {
   padding: 2px 6px;
   background-color: var(--el-fill-color-light);

@@ -237,14 +237,15 @@ function handleGotoAdd() {
 
 .code-block {
   position: relative;
-  background-color: #1e1e1e;
+  background-color: var(--rd-surface-console);
+  border: 1px solid var(--rd-border-console);
   border-radius: var(--el-border-radius-base);
   padding: var(--spacing-3) var(--spacing-4);
 }
 
 .code-block pre {
   margin: 0;
-  color: #e0e0e0;
+  color: var(--rd-surface-console-ink);
   font-size: var(--text-sm);
   line-height: 1.6;
   white-space: pre-wrap;
@@ -256,7 +257,7 @@ function handleGotoAdd() {
   position: absolute;
   top: var(--spacing-2);
   right: var(--spacing-2);
-  color: #e0e0e0;
+  color: var(--rd-surface-console-ink);
 }
 
 .code-block .el-button:hover {

@@ -383,28 +383,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.filter-card {
-  padding: var(--spacing-3);
-}
-.text-small {
-  font-size: 0.85em;
-}
-.text-secondary {
-  color: var(--el-text-color-secondary);
-  font-size: 0.85em;
-}
-.mt-1 { margin-top: 4px; }
-.mt-3 { margin-top: 16px; }
-.mb-3 { margin-bottom: 16px; }
-.form-hint {
-  font-size: 0.8em;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
 code {
   background: var(--el-fill-color-light);
   padding: 1px 4px;
   border-radius: 3px;
-  font-family: monospace;
+  font-family: var(--el-font-family-mono);
 }
 </style>

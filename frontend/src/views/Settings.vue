@@ -75,13 +75,6 @@ onMounted(() => {
 
 <style scoped>
 .settings-card {
-  max-width: 640px;
-}
-
-.form-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.6;
-  margin-top: 4px;
+  max-width: 100%;
 }
 </style>

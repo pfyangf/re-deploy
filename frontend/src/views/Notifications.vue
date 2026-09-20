@@ -272,7 +272,7 @@ onMounted(() => {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="260" fixed="right">
+            <el-table-column label="操作" width="320" fixed="right">
               <template #default="{ row }">
                 <el-button text type="primary" :icon="Edit" @click="handleEdit(row)">编辑</el-button>
                 <el-button text type="success" :icon="Promotion" @click="handleTest(row)">测试</el-button>
@@ -340,7 +340,7 @@ onMounted(() => {
                 {{ row.errorMessage || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="sentAt" label="发送时间" width="170">
+            <el-table-column prop="sentAt" label="发送时间" width="200">
               <template #default="{ row }">
                 <span class="font-mono">{{ row.sentAt }}</span>
               </template>
@@ -419,17 +419,9 @@ onMounted(() => {
 .page-tabs {
   margin-bottom: var(--spacing-3);
 }
-.filter-card {
-  padding: var(--spacing-3);
-}
+
+/* 复选框标签里的事件类型后缀，仅需与名称拉开间距；颜色/字号走全局 .text-secondary */
 .text-secondary {
-  color: var(--el-text-color-secondary);
-  font-size: 0.85em;
   margin-left: 4px;
-}
-.form-hint {
-  font-size: 0.8em;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
 }
 </style>

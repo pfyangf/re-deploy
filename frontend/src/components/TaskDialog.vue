@@ -251,11 +251,6 @@ const submitButtonText = computed(() => {
 </template>
 
 <style scoped>
-.hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
 .var-panel {
   width: 100%;
 }
@@ -263,7 +258,7 @@ const submitButtonText = computed(() => {
   margin-top: 6px;
 }
 .var-code {
-  font-family: Consolas, Monaco, monospace;
+  font-family: var(--el-font-family-mono);
   font-size: 12px;
   color: var(--el-color-primary);
 }

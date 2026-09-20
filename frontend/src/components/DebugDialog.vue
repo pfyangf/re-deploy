@@ -104,8 +104,9 @@ function handleEnter() {
 .output-area {
   margin: 0;
   padding: var(--spacing-4);
-  background-color: #1e1e1e;
-  color: #e0e0e0;
+  background-color: var(--rd-surface-console);
+  color: var(--rd-surface-console-ink);
+  border: 1px solid var(--rd-border-console);
   border-radius: var(--el-border-radius-base);
   min-height: 240px;
   max-height: 400px;

@@ -422,30 +422,6 @@ function refreshDeployHistory() {
 </template>
 
 <style scoped>
-.page-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.page-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  letter-spacing: -0.02em;
-}
-
-.form-card {
-  border-radius: var(--el-border-radius-round);
-}
-
 .server-groups {
   width: 100%;
   display: flex;
@@ -487,12 +463,6 @@ function refreshDeployHistory() {
   color: var(--el-text-color-secondary);
   font-size: var(--text-sm);
   margin-left: var(--spacing-1);
-}
-
-.hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
 }
 
 .jenkins-build-row {
@@ -548,7 +518,7 @@ function refreshDeployHistory() {
 
 .build-number {
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--el-font-family-mono);
   min-width: 50px;
 }
 
@@ -625,7 +595,7 @@ function refreshDeployHistory() {
 .qf-build {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  font-family: monospace;
+  font-family: var(--el-font-family-mono);
 }
 
 .qf-time {

@@ -185,46 +185,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.page-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  letter-spacing: -0.02em;
-}
-
-.table-card {
-  border-radius: var(--el-border-radius-round);
-}
-
-.fw-medium {
-  font-weight: 500;
-}
-
-.text-sm {
-  font-size: var(--text-sm);
-}
-
-.text-muted {
-  color: var(--el-text-color-secondary);
-}
-
-.text-error {
-  color: var(--el-color-danger);
-}
-
 .detail-desc {
   margin-bottom: var(--spacing-4);
 }
@@ -238,9 +198,11 @@ onMounted(() => {
 .log-block {
   margin: 0;
   padding: var(--spacing-3);
-  background: var(--el-fill-color-light);
+  background: var(--rd-surface-console);
+  color: var(--rd-surface-console-ink);
+  border: 1px solid var(--rd-border-console);
   border-radius: var(--el-border-radius-base);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--el-font-family-mono);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
