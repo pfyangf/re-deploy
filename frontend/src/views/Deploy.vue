@@ -249,179 +249,449 @@ function refreshDeployHistory() {
     deployHistory.value = []
   }
 }
+
+const selectedServers = computed(() =>
+  servers.value.filter(s => form.value.serverIds.includes(s.id))
+)
+
+const onlineSelectedCount = computed(() =>
+  selectedServers.value.filter(s => s.status === 'online').length
+)
+
+function selectOnlineServers() {
+  form.value.serverIds = servers.value
+    .filter(s => s.status === 'online')
+    .map(s => s.id)
+}
+
+function clearSelectedServers() {
+  form.value.serverIds = []
+}
 </script>
 
 <template>
   <div class="page-container" v-loading="loading">
     <div class="page-toolbar">
-      <h2 class="page-title">部署操作</h2>
+      <h2 class="page-title">新建部署</h2>
+      <span class="page-note">选择目标、任务和版本后发起</span>
     </div>
 
-    <el-card shadow="never" class="form-card">
-      <div v-if="deployHistory.length" class="quick-fill-section">
-        <div class="quick-fill-title">快捷填充（最近 {{ deployHistory.length }} 次部署）</div>
-        <div class="quick-fill-list">
-          <div
-            v-for="record in deployHistory"
-            :key="record.timestamp"
-            class="quick-fill-card"
-            @click="applyHistoryRecord(record)"
-          >
-            <div class="qf-task-name">{{ record.taskName || '未知任务' }}</div>
-            <div class="qf-group">{{ record.groupName || '默认分组' }}</div>
-            <div class="qf-servers">{{ record.serverIds.length }} 台服务器</div>
-            <div v-if="record.jenkinsBuildNumber" class="qf-build">Jenkins #{{ record.jenkinsBuildNumber }}</div>
-            <div class="qf-time">{{ formatRelativeTime(record.timestamp) }}</div>
-          </div>
-        </div>
-      </div>
+    <div v-if="deployHistory.length" class="quick-fill">
+      <span class="quick-fill-title">最近部署</span>
+      <button
+        v-for="record in deployHistory"
+        :key="record.timestamp"
+        type="button"
+        class="rd-chip"
+        @click="applyHistoryRecord(record)"
+      >
+        {{ record.taskName || '未知任务' }}
+        <span class="rd-chip-count">{{ record.serverIds.length }} 台 · {{ formatRelativeTime(record.timestamp) }}</span>
+      </button>
+    </div>
 
-      <el-form :model="form" label-width="100px" label-position="right">
-        <el-form-item label="选择分组">
-          <el-select
-            v-model="selectedGroupId"
-            placeholder="请选择分组"
-            style="width: 100%; max-width: 300px"
-            @change="onGroupChange"
-          >
-            <el-option
-              v-for="group in groupOptions"
-              :key="group.id ?? 'all'"
-              :label="group.name"
-              :value="group.id"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="选择任务" required>
-          <el-select
-            v-model="form.taskId"
-            placeholder="请选择任务"
-            style="width: 100%; max-width: 400px"
-          >
-            <el-option
-              v-for="task in tasks"
-              :key="task.id"
-              :label="task.name"
-              :value="task.id"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="选择服务器" required>
-          <div class="server-groups">
-            <template v-if="servers.length">
-              <template v-if="isAllGroups">
-                <div
-                  v-for="(groupServers, gid) in groupedServers"
-                  :key="gid"
-                  class="server-group"
+    <div class="deploy-grid">
+      <div class="deploy-form">
+        <section class="step-panel">
+          <header class="step-head">
+            <h3><span class="step-no">01</span>选择目标</h3>
+            <span>先定分组，再勾选服务器</span>
+          </header>
+          <div class="step-body">
+            <div class="group-grid">
+              <label
+                v-for="group in groupOptions"
+                :key="group.id ?? 'all'"
+                class="choice-row"
+                :class="{ 'is-selected': selectedGroupId === group.id }"
+              >
+                <input
+                  type="radio"
+                  name="deploy-group"
+                  :checked="selectedGroupId === group.id"
+                  @change="selectedGroupId = group.id; onGroupChange()"
                 >
-                  <div class="group-title">{{ getGroupName(parseInt(gid)) }}</div>
-                  <el-checkbox-group v-model="form.serverIds" class="server-list">
-                    <el-checkbox
-                      v-for="server in groupServers"
-                      :key="server.id"
-                      :value="server.id"
-                      class="server-checkbox"
-                    >
-                      {{ server.name }}
-                      <span class="server-host font-mono">({{ server.host }})</span>
-                    </el-checkbox>
-                  </el-checkbox-group>
+                <span>
+                  <span class="choice-name">{{ group.name }}</span>
+                  <span class="choice-meta">{{ group.id == null ? '不限制分组' : '仅该分组下的任务和服务器' }}</span>
+                </span>
+              </label>
+            </div>
+
+            <div class="pick-toolbar">
+              <span>已选 <b>{{ form.serverIds.length }}</b> 台<span v-if="onlineSelectedCount"> · {{ onlineSelectedCount }} 在线</span></span>
+              <span class="pick-actions">
+                <button type="button" class="text-btn" @click="selectOnlineServers">全选在线</button>
+                <button type="button" class="text-btn" @click="clearSelectedServers">清空</button>
+              </span>
+            </div>
+
+            <div v-if="servers.length" class="server-pick">
+              <template v-if="isAllGroups">
+                <div v-for="(groupServers, gid) in groupedServers" :key="gid" class="pick-group">
+                  <div class="pick-group-name">{{ getGroupName(parseInt(gid)) }}</div>
+                  <label v-for="server in groupServers" :key="server.id" class="check-row">
+                    <input v-model="form.serverIds" type="checkbox" :value="server.id">
+                    <span class="check-name">{{ server.name }}</span>
+                    <span class="check-meta font-mono">{{ server.host }}:{{ server.port }}</span>
+                    <span :class="server.status === 'online' ? 'rd-status rd-ok' : 'rd-status rd-off'">
+                      {{ server.status === 'online' ? '在线' : '离线' }}
+                    </span>
+                  </label>
                 </div>
               </template>
               <template v-else>
-                <el-checkbox-group v-model="form.serverIds" class="server-list flat-list">
-                  <el-checkbox
-                    v-for="server in servers"
-                    :key="server.id"
-                    :value="server.id"
-                    class="server-checkbox"
-                  >
-                    {{ server.name }}
-                    <span class="server-host font-mono">({{ server.host }})</span>
-                  </el-checkbox>
-                </el-checkbox-group>
+                <label v-for="server in servers" :key="server.id" class="check-row">
+                  <input v-model="form.serverIds" type="checkbox" :value="server.id">
+                  <span class="check-name">{{ server.name }}</span>
+                  <span class="check-meta font-mono">{{ server.host }}:{{ server.port }}</span>
+                  <span :class="server.status === 'online' ? 'rd-status rd-ok' : 'rd-status rd-off'">
+                    {{ server.status === 'online' ? '在线' : '离线' }}
+                  </span>
+                </label>
               </template>
-            </template>
-            <el-empty v-else description="暂无服务器" :image-size="80" />
+            </div>
+            <p v-else class="empty-note">当前分组没有服务器</p>
           </div>
-        </el-form-item>
+        </section>
 
-        <el-form-item label="版本号">
-          <el-input
-            v-model="form.version"
-            placeholder="例如: v1.0.0"
-            style="max-width: 300px"
-          />
-        </el-form-item>
+        <section class="step-panel">
+          <header class="step-head">
+            <h3><span class="step-no">02</span>选择任务</h3>
+            <span>使用已保存的任务模板</span>
+          </header>
+          <div class="step-body">
+            <div v-if="tasks.length" class="task-pick">
+              <label
+                v-for="task in tasks"
+                :key="task.id"
+                class="choice-row"
+                :class="{ 'is-selected': form.taskId === task.id }"
+              >
+                <input v-model="form.taskId" type="radio" name="deploy-task" :value="task.id">
+                <span>
+                  <span class="choice-name">{{ task.name }}</span>
+                  <span class="choice-meta">{{ task.jenkinsEnabled ? '需要 Jenkins 构建号' : '直接执行任务脚本' }}</span>
+                </span>
+              </label>
+            </div>
+            <p v-else class="empty-note">当前分组没有任务</p>
+          </div>
+        </section>
 
-        <el-form-item v-if="showJenkinsBuildNumber" label="Jenkins 构建号">
-          <div class="jenkins-build-row">
-            <el-input
-              v-model="form.jenkinsBuildNumber"
-              placeholder="例如: 164"
-              style="max-width: 300px"
-            />
-            <el-popover
-              v-model:visible="buildHistoryVisible"
-              placement="bottom-start"
-              trigger="manual"
-              :width="400"
-            >
-              <template #reference>
-                <el-button :icon="Refresh" :loading="buildHistoryLoading" @click="fetchBuildHistory">
-                  拉取
-                </el-button>
-              </template>
-              <div class="build-history-panel">
-                <div class="build-history-title">构建历史</div>
-                <div v-if="buildHistoryLoading" class="build-history-loading">
-                  <el-icon class="is-loading"><Refresh /></el-icon>
-                  <span>加载中...</span>
-                </div>
-                <div v-else-if="buildHistory.length === 0" class="build-history-empty">
-                  暂无构建记录
-                </div>
-                <div v-else class="build-history-list">
-                  <div
-                    v-for="build in buildHistory"
-                    :key="build.number"
-                    class="build-history-item"
-                    @click="selectBuild(build)"
-                  >
-                    <span class="build-number">#{{ build.number }}</span>
-                    <el-tag :type="getResultTagType(build.result)" size="small">
-                      {{ getResultText(build.result) }}
-                    </el-tag>
-                    <span class="build-time">{{ formatBuildTime(build.timestamp) }}</span>
-                    <span v-if="build.description" class="build-desc">{{ build.description }}</span>
+        <section class="step-panel">
+          <header class="step-head">
+            <h3><span class="step-no">03</span>部署参数</h3>
+            <span>版本号写入部署历史</span>
+          </header>
+          <div class="step-body form-grid">
+            <label class="field">
+              <span>版本号</span>
+              <el-input v-model="form.version" placeholder="例如 v1.0.0" />
+            </label>
+            <label v-if="showJenkinsBuildNumber" class="field">
+              <span>Jenkins 构建号</span>
+              <div class="jenkins-build-row">
+                <el-input v-model="form.jenkinsBuildNumber" placeholder="例如 164" />
+                <el-popover
+                  v-model:visible="buildHistoryVisible"
+                  placement="bottom-start"
+                  trigger="manual"
+                  :width="400"
+                >
+                  <template #reference>
+                    <el-button :icon="Refresh" :loading="buildHistoryLoading" @click="fetchBuildHistory">
+                      拉取
+                    </el-button>
+                  </template>
+                  <div class="build-history-panel">
+                    <div class="build-history-title">构建历史</div>
+                    <div v-if="buildHistoryLoading" class="build-history-loading">加载中...</div>
+                    <div v-else-if="buildHistory.length === 0" class="build-history-empty">暂无构建记录</div>
+                    <div v-else class="build-history-list">
+                      <div
+                        v-for="build in buildHistory"
+                        :key="build.number"
+                        class="build-history-item"
+                        @click="selectBuild(build)"
+                      >
+                        <span class="build-number">#{{ build.number }}</span>
+                        <el-tag :type="getResultTagType(build.result)" size="small">
+                          {{ getResultText(build.result) }}
+                        </el-tag>
+                        <span class="build-time">{{ formatBuildTime(build.timestamp) }}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </el-popover>
               </div>
-            </el-popover>
+            </label>
           </div>
-          <div class="hint">输入要部署的构建编号，或点击"拉取"从 Jenkins 历史中选择</div>
-        </el-form-item>
+        </section>
+      </div>
 
-        <el-form-item>
+      <aside class="step-panel deploy-aside">
+        <header class="step-head">
+          <h3>本次部署</h3>
+          <span>待提交</span>
+        </header>
+        <div class="step-body">
+          <dl class="kv">
+            <div><dt>分组</dt><dd>{{ getGroupName(selectedGroupId) }}</dd></div>
+            <div><dt>任务</dt><dd>{{ selectedTask ? selectedTask.name : '未选择' }}</dd></div>
+            <div><dt>目标</dt><dd>{{ form.serverIds.length ? form.serverIds.length + ' 台服务器' : '尚未选择' }}</dd></div>
+            <div><dt>版本</dt><dd class="font-mono">{{ form.version || '—' }}</dd></div>
+            <div v-if="showJenkinsBuildNumber"><dt>构建号</dt><dd class="font-mono">{{ form.jenkinsBuildNumber || '—' }}</dd></div>
+          </dl>
+          <p class="aside-note">
+            {{ form.serverIds.length && form.taskId ? '提交后跳转到部署历史，可查看各机器日志。' : '请先选择任务，并至少勾选一台服务器。' }}
+          </p>
           <el-button
             type="primary"
-            size="large"
+            class="submit-btn"
             :icon="Promotion"
             :loading="submitting"
             @click="handleSubmit"
           >
-            开始部署
+            发起部署
           </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </div>
+      </aside>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.quick-fill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-fill-title {
+  font-size: 11.5px;
+  color: var(--el-text-color-secondary);
+}
+
+.deploy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.7fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.deploy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.step-panel {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+}
+
+.step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.step-head h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.step-head span,
+.step-no {
+  font-size: 11.5px;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
+}
+
+.step-no {
+  font-family: var(--el-font-family-mono);
+  letter-spacing: 0.04em;
+}
+
+.step-body {
+  padding: 14px 16px;
+}
+
+.group-grid,
+.task-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.choice-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.choice-row.is-selected {
+  border-color: #9bb6d8;
+  background: var(--el-fill-color-light);
+}
+
+.choice-name {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.choice-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.pick-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--el-text-color-secondary);
+}
+
+.pick-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.text-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.server-pick {
+  margin-top: 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 5px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.pick-group-name {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--el-border-color);
+  font-size: 12.5px;
+}
+
+.check-name {
+  font-weight: 600;
+}
+
+.check-meta {
+  color: var(--el-text-color-secondary);
+  font-size: 11.5px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+}
+
+.deploy-aside {
+  position: sticky;
+  top: 12px;
+}
+
+.kv {
+  margin: 0;
+}
+
+.kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--el-border-color);
+  font-size: 12.5px;
+}
+
+.kv dt {
+  color: var(--el-text-color-secondary);
+}
+
+.kv dd {
+  margin: 0;
+  text-align: right;
+}
+
+.aside-note {
+  margin: 12px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.submit-btn {
+  width: 100%;
+}
+
+.empty-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 980px) {
+  .deploy-grid,
+  .group-grid,
+  .task-pick,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .deploy-aside {
+    position: static;
+  }
+}
+
 .server-groups {
   width: 100%;
   display: flex;

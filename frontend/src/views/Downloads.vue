@@ -49,8 +49,12 @@ const statusOptions = [
   { value: 'CANCELLED', label: '已取消', type: 'info' }
 ]
 
-function statusInfo(s) {
-  return statusOptions.find(x => x.value === s) || { label: s, type: 'info' }
+function downloadStatusClass(status) {
+  if (status === 'SUCCESS') return 'rd-status rd-ok'
+  if (status === 'FAILED') return 'rd-status rd-fail'
+  if (status === 'DOWNLOADING') return 'rd-status rd-run'
+  if (status === 'PENDING') return 'rd-status rd-queue'
+  return 'rd-status rd-off'
 }
 
 function baseName(p) {
@@ -243,42 +247,30 @@ onUnmounted(() => {
       <h2 class="page-title">远端下载</h2>
       <div class="toolbar-actions">
         <el-button :icon="Refresh" @click="loadSessions">刷新</el-button>
-        <el-button type="primary" :icon="Plus" @click="openTrigger">触发新下载</el-button>
+        <el-button type="primary" :icon="Plus" @click="openTrigger">触发下载</el-button>
       </div>
     </div>
 
-    <el-card shadow="never" class="filter-card mb-3">
-      <el-form inline>
-        <el-form-item label="服务器">
-          <el-select v-model="filter.serverId" clearable placeholder="全部" style="width: 200px"
-                     filterable @change="onFilterChange">
-            <el-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="filter.status" clearable placeholder="全部" style="width: 140px" @change="onFilterChange">
-            <el-option v-for="o in statusOptions" :key="o.value" :label="o.label" :value="o.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button :icon="Search" @click="loadSessions">查询</el-button>
-        </el-form-item>
-        <el-form-item>
-          <span class="text-secondary">
-            <el-icon><Document /></el-icon>
-            注意：远端路径必须为绝对路径，且在 agent 的 <code>download.allowed_paths</code> 白名单内
-          </span>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <el-card shadow="never" class="table-card">
-      <el-table v-loading="loading" :data="sessions" stripe empty-text="暂无下载记录">
-        <el-table-column prop="id" label="ID" width="80">
-          <template #default="{ row }">
-            <span class="font-mono">{{ row.id }}</span>
-          </template>
-        </el-table-column>
+    <section class="console-panel">
+      <div class="console-toolbar">
+        <div class="chips">
+          <button type="button" class="rd-chip" :class="{ 'is-on': !filter.status }" @click="filter.status = null; onFilterChange()">全部</button>
+          <button
+            v-for="item in statusOptions"
+            :key="item.value"
+            type="button"
+            class="rd-chip"
+            :class="{ 'is-on': filter.status === item.value }"
+            @click="filter.status = item.value; onFilterChange()"
+          >
+            {{ item.label }}
+          </button>
+        </div>
+        <el-select v-model="filter.serverId" clearable filterable placeholder="全部服务器" style="width: 180px" @change="onFilterChange">
+          <el-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
+        </el-select>
+      </div>
+      <el-table v-loading="loading" :data="sessions" empty-text="暂无下载记录">
         <el-table-column label="服务器" width="160">
           <template #default="{ row }">
             {{ serverNameMap[row.serverId] || `#${row.serverId}` }}
@@ -289,21 +281,19 @@ onUnmounted(() => {
             <span class="font-mono text-small">{{ row.remotePath }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="200">
+        <el-table-column label="进度" min-width="220">
           <template #default="{ row }">
-            <el-progress
-              :percentage="progressPct(row)"
-              :status="row.status === 'FAILED' ? 'exception' : (row.status === 'SUCCESS' ? 'success' : '')"
-              :stroke-width="14"
-            />
-            <div class="text-secondary text-small mt-1">
-              {{ formatBytes(row.bytesReceived) }} / {{ formatBytes(row.fileSize) }}
+            <div v-if="row.status === 'DOWNLOADING' || row.status === 'PENDING'" class="dl-progress">
+              <span class="dl-bar"><i :style="{ transform: `scaleX(${progressPct(row) / 100})` }"></i></span>
+              <span class="font-mono">{{ progressPct(row) }}%</span>
+              <span class="page-note">{{ formatBytes(row.bytesReceived) }} / {{ formatBytes(row.fileSize) }}</span>
             </div>
+            <span v-else class="font-mono">{{ formatBytes(row.bytesReceived) }} / {{ formatBytes(row.fileSize) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="statusInfo(row.status).type" size="small">{{ statusInfo(row.status).label }}</el-tag>
+            <span :class="downloadStatusClass(row.status)">{{ statusOptions.find(item => item.value === row.status)?.label || row.status }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="md5" label="MD5" width="180" show-overflow-tooltip>
@@ -322,7 +312,7 @@ onUnmounted(() => {
             <span class="font-mono">{{ row.createdAt }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="188" class-name="col-actions" align="right">
           <template #default="{ row }">
             <el-button v-if="row.status === 'SUCCESS'"
                        text type="primary" :icon="Download" @click="handleDownload(row)">取文件</el-button>
@@ -332,51 +322,50 @@ onUnmounted(() => {
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination
-        class="mt-3"
-        :total="total"
-        :page-size="page.limit"
-        :current-page="Math.floor(page.offset / page.limit) + 1"
-        layout="total, prev, pager, next, jumper"
-        @current-change="(p) => onPageChange({ pageNum: p, pageSize: page.limit })"
-      />
-    </el-card>
+      <div class="console-foot">
+        <el-pagination
+          :total="total"
+          :page-size="page.limit"
+          :current-page="Math.floor(page.offset / page.limit) + 1"
+          layout="total, prev, pager, next"
+          @current-change="(p) => onPageChange({ pageNum: p, pageSize: page.limit })"
+        />
+      </div>
+    </section>
 
     <!-- 触发下载对话框 -->
-    <el-dialog
-      v-model="triggerDialogVisible"
-      title="触发远端文件下载"
-      width="560px"
-      destroy-on-close
-    >
-      <el-form :model="triggerForm" label-width="100px">
-        <el-form-item label="服务器分组">
-          <el-select v-model="triggerForm.groupId" placeholder="全部分组" style="width: 100%"
-                     @change="onTriggerGroupChange">
-            <el-option label="全部分组" :value="null" />
-            <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
+    <el-dialog v-model="triggerDialogVisible" width="520" destroy-on-close>
+      <template #header>
+        <div>
+          <h2 class="od-dialog-title">触发下载</h2>
+          <p class="od-dialog-sub">从远端 Agent 拉取文件到本地</p>
+        </div>
+      </template>
+      <el-form class="od-form" :model="triggerForm" label-position="top">
+        <div class="od-field-row">
+          <el-form-item label="分组">
+            <el-select v-model="triggerForm.groupId" placeholder="全部分组" style="width: 100%" @change="onTriggerGroupChange">
+              <el-option label="全部分组" :value="null" />
+              <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="服务器" required>
+            <el-select v-model="triggerForm.serverId" placeholder="选择服务器" style="width: 100%" filterable>
+              <el-option v-for="s in triggerServerOptions" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item label="远端绝对路径" required>
+          <el-input v-model="triggerForm.remotePath" class="font-mono" placeholder="/var/log/order-service/app.log" />
         </el-form-item>
-        <el-form-item label="服务器" required>
-          <el-select v-model="triggerForm.serverId" placeholder="选择服务器" style="width: 100%" filterable>
-            <el-option v-for="s in triggerServerOptions" :key="s.id"
-                       :label="`${s.name} (${s.host}:${s.port})`" :value="s.id" />
-          </el-select>
-          <div class="form-hint">
-            可先按分组筛选，或直接在输入框输入名称/IP 搜索
-          </div>
-        </el-form-item>
-        <el-form-item label="远端路径" required>
-          <el-input v-model="triggerForm.remotePath"
-                    placeholder="如：/var/log/nginx/access.log（必须绝对路径）" />
-          <div class="form-hint">
-            路径必须在 agent 端 <code>download.allowed_paths</code> 白名单内；agent 端会校验
-          </div>
-        </el-form-item>
+        <p class="od-notice">路径必须在 Agent 白名单内，Agent 会拒绝白名单之外的绝对路径。</p>
       </el-form>
       <template #footer>
-        <el-button @click="triggerDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="triggering" @click="handleTrigger">启动下载</el-button>
+        <span class="od-dialog-note">下载完成后可校验 MD5 并取回文件</span>
+        <div class="od-dialog-actions">
+          <el-button @click="triggerDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="triggering" @click="handleTrigger">开始下载</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>

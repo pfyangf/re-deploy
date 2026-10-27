@@ -96,76 +96,53 @@ async function handleSubmit() {
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="dialogTitle"
-    width="700"
+    width="640"
     :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <el-form :model="form" label-width="120px" label-position="right">
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="服务器名称" required>
-            <el-input v-model="form.name" placeholder="请输入服务器名称" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="主机地址" required>
-            <el-input v-model="form.host" placeholder="请输入主机地址" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="Agent 端口">
-            <el-input-number v-model="form.port" :min="1" :max="65535" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="Agent Token" required>
-            <el-input v-model="form.agentToken" placeholder="请输入 Agent Token" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="分组" required>
-            <el-select v-model="form.groupId" placeholder="请选择分组" style="width: 100%">
-              <el-option
-                v-for="g in groups"
-                :key="g.id"
-                :label="g.name"
-                :value="g.id"
-              />
-            </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="描述">
-            <el-input v-model="form.description" placeholder="请输入描述" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-divider content-position="left">SSH 配置 (可选)</el-divider>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="SSH 用户名">
-            <el-input v-model="form.sshUsername" placeholder="root" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="SSH 端口">
-            <el-input-number v-model="form.sshPort" :min="1" :max="65535" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
+    <template #header>
+      <div>
+        <h2 class="od-dialog-title">{{ dialogTitle }}</h2>
+        <p class="od-dialog-sub">保存后用于 Agent 通信，SSH 信息仅用于终端</p>
+      </div>
+    </template>
+    <el-form class="od-form" :model="form" label-position="top">
+      <el-form-item label="名称" required>
+        <el-input v-model="form.name" maxlength="24" placeholder="请输入服务器名称" />
+      </el-form-item>
+      <div class="od-field-row">
+        <el-form-item label="主机" required>
+          <el-input v-model="form.host" class="font-mono" placeholder="10.0.0.1" />
+        </el-form-item>
+        <el-form-item label="Agent 端口">
+          <el-input-number v-model="form.port" :min="1" :max="65535" controls-position="right" style="width: 100%" />
+        </el-form-item>
+      </div>
+      <div class="od-field-row">
+        <el-form-item label="分组" required>
+          <el-select v-model="form.groupId" placeholder="请选择分组" style="width: 100%">
+            <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Agent Token" required>
+          <el-input v-model="form.agentToken" class="font-mono" placeholder="Agent 首次启动时打印的令牌" />
+        </el-form-item>
+      </div>
+      <el-form-item label="描述">
+        <el-input v-model="form.description" placeholder="说明这台机器的用途" />
+      </el-form-item>
+      <div class="od-jenkins">
+        <div class="od-jenkins-head">SSH 配置<span class="page-note">可选，用于浏览器终端</span></div>
+        <div class="od-jenkins-body">
+          <div class="od-field-row">
+            <el-form-item label="SSH 用户名">
+              <el-input v-model="form.sshUsername" placeholder="root" />
+            </el-form-item>
+            <el-form-item label="SSH 端口">
+              <el-input-number v-model="form.sshPort" :min="1" :max="65535" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </div>
           <el-form-item label="SSH 密码">
             <el-input
               v-model="form.sshPassword"
@@ -174,25 +151,24 @@ async function handleSubmit() {
               :placeholder="isEdit ? (server.hasSshPassword ? '已配置，留空则不修改' : '未配置，留空则不修改') : '请输入 SSH 密码'"
             />
           </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="SSH 私钥">
+          <el-form-item label="SSH 私钥" style="margin-bottom: 0">
             <el-input
               v-model="form.sshPrivateKey"
               type="textarea"
               :rows="3"
-              :placeholder="isEdit ? (server.hasSshPrivateKey ? '已配置，留空则不修改' : '未配置，留空则不修改') : '-----BEGIN RSA PRIVATE KEY-----...'"
+              class="font-mono"
+              :placeholder="isEdit ? (server.hasSshPrivateKey ? '已配置，留空则不修改' : '未配置，留空则不修改') : '-----BEGIN OPENSSH PRIVATE KEY-----'"
             />
           </el-form-item>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
     </el-form>
-
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ submitText }}
-      </el-button>
+      <span class="od-dialog-note">密码和私钥留空时保留原值</span>
+      <div class="od-dialog-actions">
+        <el-button @click="handleClose">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="handleSubmit">{{ submitText }}</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>

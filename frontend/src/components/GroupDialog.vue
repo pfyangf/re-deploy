@@ -70,31 +70,37 @@ async function handleSubmit() {
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="group ? '编辑分组' : '新增分组'"
-    width="500"
+    width="460"
     :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <el-form :model="form" label-width="80px" label-position="right">
+    <template #header>
+      <div>
+        <h2 class="od-dialog-title">{{ group ? '编辑分组' : '新增分组' }}</h2>
+        <p class="od-dialog-sub">分组用于组织服务器与批量部署</p>
+      </div>
+    </template>
+    <el-form class="od-form" :model="form" label-position="top">
       <el-form-item label="名称" required>
-        <el-input v-model="form.name" placeholder="请输入分组名称" />
+        <el-input v-model="form.name" maxlength="24" placeholder="请输入分组名称" />
       </el-form-item>
       <el-form-item label="描述">
         <el-input
           v-model="form.description"
           type="textarea"
           :rows="3"
-          placeholder="请输入描述"
+          maxlength="200"
+          placeholder="说明该分组承载的业务与用途"
         />
       </el-form-item>
     </el-form>
-
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">
-        保存
-      </el-button>
+      <span class="od-dialog-note">默认分组不可删除</span>
+      <div class="od-dialog-actions">
+        <el-button @click="handleClose">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="handleSubmit">保存</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>

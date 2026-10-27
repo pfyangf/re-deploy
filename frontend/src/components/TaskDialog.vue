@@ -138,124 +138,99 @@ const submitButtonText = computed(() => {
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="dialogTitle"
-    width="1000"
+    width="640"
     :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <el-form :model="form" label-width="100px" label-position="right">
-      <el-form-item label="任务名称" required>
-        <el-input v-model="form.name" placeholder="请输入任务名称" />
-      </el-form-item>
-
-      <el-form-item label="分组" required>
+    <template #header>
+      <div>
+        <h2 class="od-dialog-title">{{ dialogTitle }}</h2>
+        <p class="od-dialog-sub">编排可复用的部署或命令任务模板</p>
+      </div>
+    </template>
+    <el-form class="od-form" :model="form" label-position="top">
+      <div class="od-field-row">
+        <el-form-item label="任务名称" required>
+          <el-input v-model="form.name" maxlength="40" placeholder="请输入任务名称" />
+        </el-form-item>
+        <el-form-item label="任务类型" required>
+          <el-select v-model="form.taskType" style="width: 100%">
+            <el-option label="部署任务" value="deploy" />
+            <el-option label="命令任务" value="command" />
+          </el-select>
+        </el-form-item>
+      </div>
+      <el-form-item label="所属分组" required>
         <el-select v-model="form.groupId" placeholder="请选择分组" style="width: 100%">
-          <el-option
-            v-for="g in groups"
-            :key="g.id"
-            :label="g.name"
-            :value="g.id"
-          />
+          <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
         </el-select>
       </el-form-item>
-
-      <el-form-item label="任务类型" required>
-        <el-radio-group v-model="form.taskType">
-          <el-radio value="deploy">部署任务</el-radio>
-          <el-radio value="command">命令任务</el-radio>
-        </el-radio-group>
+      <el-form-item label="任务描述">
+        <el-input v-model="form.description" type="textarea" :rows="2" maxlength="200" placeholder="说明该任务的作用与执行时机" />
       </el-form-item>
-
       <el-form-item label="部署路径">
-        <el-input v-model="form.deployPath" placeholder="/opt/application" />
+        <el-input v-model="form.deployPath" class="font-mono" placeholder="/opt/redeploy/releases" />
       </el-form-item>
-
       <el-form-item label="前置命令">
-        <el-input
-          v-model="form.beforeCommand"
-          type="textarea"
-          :rows="2"
-          placeholder="部署前执行的命令"
-        />
+        <el-input v-model="form.beforeCommand" type="textarea" :rows="2" class="font-mono" placeholder="systemctl stop app" />
       </el-form-item>
-
       <el-form-item label="后置命令">
-        <el-input
-          v-model="form.afterCommand"
-          type="textarea"
-          :rows="2"
-          placeholder="部署后执行的命令"
-        />
+        <el-input v-model="form.afterCommand" type="textarea" :rows="2" class="font-mono" placeholder="systemctl start app" />
       </el-form-item>
-
-      <el-form-item label="可用变量">
-        <div class="var-panel">
-          <div class="hint">
-            前置/后置命令中使用 <span v-pre>{{变量名}}</span> 语法，部署时自动替换为实际值；未提供的变量保持原样。
-          </div>
-          <el-table :data="templateVariables" size="small" border max-height="220" class="var-table">
-            <el-table-column prop="name" label="变量" width="190">
+      <el-collapse class="var-collapse">
+        <el-collapse-item title="命令可用变量" name="vars">
+          <p class="page-note">使用 <span v-pre>{{变量名}}</span>，部署时替换；未提供的变量保持原样。</p>
+          <el-table :data="templateVariables" size="small" max-height="180">
+            <el-table-column prop="name" label="变量" width="180">
               <template #default="{ row }"><code class="var-code">{{ row.name }}</code></template>
             </el-table-column>
-            <el-table-column prop="desc" label="说明" min-width="180" />
-            <el-table-column prop="example" label="示例" width="150" />
+            <el-table-column prop="desc" label="说明" min-width="160" />
+            <el-table-column prop="example" label="示例" width="140" />
           </el-table>
+        </el-collapse-item>
+      </el-collapse>
+      <div class="od-jenkins">
+        <div class="od-jenkins-head">
+          <el-switch v-model="form.jenkinsEnabled" />
+          <span>Jenkins 集成</span>
+          <span class="page-note">{{ form.jenkinsEnabled ? '已启用' : '未启用' }}</span>
         </div>
-      </el-form-item>
-
-      <el-form-item label="Jenkins 集成">
-        <el-checkbox v-model="form.jenkinsEnabled">启用 Jenkins 构建物下载</el-checkbox>
-      </el-form-item>
-
-      <template v-if="form.jenkinsEnabled">
-        <el-form-item label="Jenkins 地址">
-          <el-input v-model="form.jenkinsUrl" placeholder="http://jenkins:8080" />
-        </el-form-item>
-
-        <el-form-item label="Job 名称">
-          <el-input v-model="form.jenkinsJobName" placeholder="job/group/job-name" />
-          <div class="hint">完整路径，和 Jenkins URL 拼接后可访问</div>
-        </el-form-item>
-
-        <el-form-item label="构件路径">
-          <el-input v-model="form.jenkinsArtifactPath" placeholder="project/target/app.war" />
-        </el-form-item>
-
-        <el-form-item label="用户名">
-          <el-input v-model="form.jenkinsUser" placeholder="Jenkins 用户名（需要下载权限）" />
-        </el-form-item>
-
-        <el-form-item label="API Token">
-          <el-input v-model="form.jenkinsToken" type="password" placeholder="Jenkins API Token" />
-        </el-form-item>
-      </template>
-
-      <el-form-item label="描述">
-        <el-input
-          v-model="form.description"
-          type="textarea"
-          :rows="2"
-          placeholder="请输入描述"
-        />
-      </el-form-item>
+        <div v-if="form.jenkinsEnabled" class="od-jenkins-body">
+          <el-form-item label="Jenkins 地址">
+            <el-input v-model="form.jenkinsUrl" class="font-mono" placeholder="https://jenkins.internal" />
+          </el-form-item>
+          <el-form-item label="Job 名称">
+            <el-input v-model="form.jenkinsJobName" class="font-mono" placeholder="group/job-name" />
+          </el-form-item>
+          <el-form-item label="构件路径">
+            <el-input v-model="form.jenkinsArtifactPath" class="font-mono" placeholder="target/app.war" />
+          </el-form-item>
+          <div class="od-field-row">
+            <el-form-item label="用户名">
+              <el-input v-model="form.jenkinsUser" placeholder="jenkins-bot" />
+            </el-form-item>
+            <el-form-item label="API Token" style="margin-bottom: 0">
+              <el-input v-model="form.jenkinsToken" type="password" show-password placeholder="下载权限令牌" />
+            </el-form-item>
+          </div>
+        </div>
+      </div>
     </el-form>
-
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">
-        {{ submitButtonText }}
-      </el-button>
+      <span class="od-dialog-note">Jenkins 令牌只保存在服务端</span>
+      <div class="od-dialog-actions">
+        <el-button @click="handleClose">取消</el-button>
+        <el-button type="primary" :loading="loading" @click="handleSubmit">{{ submitButtonText }}</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
 
 <style scoped>
-.var-panel {
-  width: 100%;
-}
-.var-table {
-  margin-top: 6px;
+.var-collapse {
+  margin-bottom: 12px;
+  border: 0;
 }
 .var-code {
   font-family: var(--el-font-family-mono);

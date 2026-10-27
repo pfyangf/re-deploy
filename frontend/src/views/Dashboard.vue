@@ -1,7 +1,6 @@
-<script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+﻿<script setup>
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import api from '../api/client'
-import { Cpu, Monitor, TrendCharts, CircleCheck } from '@element-plus/icons-vue'
 
 const stats = ref({
   totalServers: 0,
@@ -13,8 +12,41 @@ const stats = ref({
 const recentDeploys = ref([])
 const activeDeploys = ref([])
 const servers = ref([])
+const historyAll = ref([])
 const loading = ref(true)
+const syncedAt = ref('')
 let refreshTimer = null
+
+const rateClass = computed(() => {
+  if (!stats.value.totalDeploys) return ''
+  if (stats.value.successRate >= 90) return 'stat-value-ok'
+  if (stats.value.successRate >= 70) return 'stat-value-queue'
+  return 'stat-value-fail'
+})
+
+const onlineSub = computed(() => {
+  if (!stats.value.totalServers) return '尚未登记目标机'
+  const rate = ((stats.value.onlineServers / stats.value.totalServers) * 100).toFixed(1)
+  const offline = stats.value.totalServers - stats.value.onlineServers
+  if (!offline) return `在线率 ${rate}% · 全部心跳正常`
+  return `在线率 ${rate}% · ${offline} 台心跳中断`
+})
+
+const serverSub = computed(() => {
+  if (!stats.value.totalServers) return '尚未登记目标机'
+  const groups = new Set(servers.value.map(s => s.groupId).filter(id => id != null))
+  const offline = stats.value.totalServers - stats.value.onlineServers
+  return `${groups.size} 个分组 · ${offline} 台离线`
+})
+
+const failedCount = computed(() => historyAll.value.filter(h => h.status === 'failed').length)
+const todayCount = computed(() => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  return historyAll.value.filter(h => new Date(h.startedAt || h.createdAt) >= start).length
+})
+const running = computed(() => activeDeploys.value.filter(d => d.status === 'running'))
+const queued = computed(() => activeDeploys.value.filter(d => d.status === 'pending'))
 
 async function loadData(silent = false) {
   if (!silent) loading.value = true
@@ -36,11 +68,12 @@ async function loadData(silent = false) {
       stats.value.successRate = historyRes.length > 0
         ? Math.round((successCount / historyRes.length) * 100)
         : 0
+      historyAll.value = historyRes
       recentDeploys.value = historyRes.slice(0, 8)
-      // 部署队列：执行中 + 排队中，按提交先后（ID 升序）排列
       activeDeploys.value = historyRes
         .filter(h => h.status === 'running' || h.status === 'pending')
         .sort((a, b) => a.id - b.id)
+      syncedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
     }
   } catch (error) {
     console.error('Failed to load dashboard data:', error)
@@ -49,15 +82,29 @@ async function loadData(silent = false) {
   }
 }
 
-function getStatusType(status) {
-  const map = {
-    success: 'success',
-    failed: 'danger',
-    running: 'warning',
-    pending: 'info',
-    cancelled: 'info'
-  }
-  return map[status] || 'info'
+function statusClass(status) {
+  const map = { success: 'rd-ok', failed: 'rd-fail', running: 'rd-run', pending: 'rd-queue', cancelled: 'rd-off' }
+  return `rd-status ${map[status] || 'rd-off'}`
+}
+
+function targetLabel(row) {
+  return row.taskName || (row.taskId ? `任务#${row.taskId}` : `部署#${row.id}`)
+}
+
+function durationText(row) {
+  if (!row.startedAt || !row.completedAt) return '—'
+  const ms = new Date(row.completedAt) - new Date(row.startedAt)
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  if (ms < 1000) return `${ms}ms`
+  const sec = Math.round(ms / 1000)
+  if (sec < 60) return `${sec}s`
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`
+}
+
+function clockText(row) {
+  const value = row.startedAt || row.createdAt
+  if (!value) return '—'
+  return new Date(value).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
 function getStatusText(status) {
@@ -84,282 +131,106 @@ onUnmounted(() => {
 
 <template>
   <div v-loading="loading">
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-blue">
-              <el-icon :size="28"><Monitor /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label font-mono">服务器总数</div>
-              <div class="stat-value" style="color: var(--el-color-primary)">
-                {{ stats.totalServers }}
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
+    <div class="page-toolbar">
+      <h2 class="page-title">集群概览</h2>
+      <span class="page-note">{{ syncedAt ? `数据更新于 ${syncedAt}` : '正在读取集群状态' }}</span>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card-plain">
+        <div class="stat-label">服务器总数</div>
+        <div class="stat-value"><b>{{ stats.totalServers }}</b><span>台</span></div>
+        <div class="stat-sub">{{ serverSub }}</div>
+      </div>
+      <div class="stat-card-plain">
+        <div class="stat-label">在线服务器</div>
+        <div class="stat-value" :class="{ 'stat-value-ok': stats.onlineServers > 0 }"><b>{{ stats.onlineServers }}</b><span>台</span></div>
+        <div class="stat-sub">{{ onlineSub }}</div>
+      </div>
+      <div class="stat-card-plain">
+        <div class="stat-label">部署总数</div>
+        <div class="stat-value"><b>{{ stats.totalDeploys }}</b><span>次</span></div>
+        <div class="stat-sub">今日 {{ todayCount }} 次</div>
+      </div>
+      <div class="stat-card-plain">
+        <div class="stat-label">成功率</div>
+        <div class="stat-value" :class="rateClass"><b>{{ stats.successRate }}</b><span>%</span></div>
+        <div class="stat-sub">累计失败 {{ failedCount }} 次</div>
+      </div>
+    </div>
 
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-green">
-              <el-icon :size="28"><CircleCheck /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label font-mono">在线服务器</div>
-              <div class="stat-value" style="color: var(--el-color-success)">
-                {{ stats.onlineServers }}
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-orange">
-              <el-icon :size="28"><TrendCharts /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label font-mono">总部署次数</div>
-              <div class="stat-value" style="color: var(--el-color-warning)">
-                {{ stats.totalDeploys }}
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-icon stat-icon-purple">
-              <el-icon :size="28"><Cpu /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label font-mono">成功率</div>
-              <div
-                class="stat-value"
-                :style="{ color: stats.successRate >= 90 ? 'var(--el-color-success)' : stats.successRate >= 70 ? 'var(--el-color-warning)' : 'var(--el-color-danger)' }"
-              >
-                {{ stats.successRate }}%
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 部署队列：执行中 / 排队中 -->
-    <el-card shadow="never" class="queue-card">
-      <template #header>
-        <div class="card-header-title">
-          <el-icon><Timer /></el-icon>
-          <span>部署队列</span>
-          <el-tag
-            v-if="activeDeploys.some(d => d.status === 'pending')"
-            type="info"
-            size="small"
-            effect="plain"
-            round
-          >
-            排队中 {{ activeDeploys.filter(d => d.status === 'pending').length }}
-          </el-tag>
-          <el-tag
-            v-if="activeDeploys.some(d => d.status === 'running')"
-            type="warning"
-            size="small"
-            effect="plain"
-            round
-          >
-            执行中 {{ activeDeploys.filter(d => d.status === 'running').length }}
-          </el-tag>
+    <div class="dash-grid">
+      <section class="console-panel">
+        <header class="panel-head">
+          <h3>部署队列</h3>
+          <span>{{ running.length }} 进行中 · {{ queued.length }} 排队中</span>
+        </header>
+        <div v-if="!running.length && !queued.length" class="empty-block">
+          <strong>队列为空</strong>
+          <p>当前没有进行中的部署任务。</p>
         </div>
-      </template>
-      <el-table :data="activeDeploys" stripe size="default" empty-text="当前没有执行中或排队中的部署">
-        <el-table-column prop="id" label="ID" width="80">
-          <template #default="{ row }">
-            <span class="font-mono text-sm">{{ row.id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="任务" min-width="160">
-          <template #default="{ row }">
-            {{ row.taskName || (row.taskId ? '任务#' + row.taskId : '-') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="版本" min-width="100">
-          <template #default="{ row }">
-            <el-tag v-if="row.version" type="info" effect="plain" size="small">{{ row.version }}</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" effect="light" round>
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="提交时间" min-width="170">
-          <template #default="{ row }">
-            <span class="text-sm">{{ new Date(row.startedAt || row.createdAt).toLocaleString() }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 列表区域 -->
-    <el-row :gutter="20" class="list-row">
-      <el-col :xs="24" :lg="12">
-        <el-card shadow="never" class="list-card">
-          <template #header>
-            <div class="card-header-title">
-              <el-icon><Monitor /></el-icon>
-              <span>服务器状态</span>
+        <div v-else class="queue-list">
+          <div v-for="row in running" :key="`run-${row.id}`" class="queue-row">
+            <div>
+              <div class="fw-medium">{{ targetLabel(row) }}</div>
+              <div class="cell-sub">{{ row.version || '未填写版本' }}</div>
             </div>
-          </template>
-          <el-table :data="servers" stripe size="default" empty-text="暂无数据">
-            <el-table-column prop="name" label="名称" min-width="120" />
-            <el-table-column label="地址" min-width="180">
-              <template #default="{ row }">
-                <span class="font-mono text-sm">{{ row.host }}:{{ row.port }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="120" align="center">
-              <template #default="{ row }">
-                <el-tag
-                  :type="row.status === 'online' ? 'success' : 'danger'"
-                  effect="light"
-                  round
-                >
-                  {{ row.status }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-
-      <el-col :xs="24" :lg="12">
-        <el-card shadow="never" class="list-card">
-          <template #header>
-            <div class="card-header-title">
-              <el-icon><Clock /></el-icon>
-              <span>最近部署</span>
+            <span :class="statusClass(row.status)">{{ getStatusText(row.status) }}</span>
+          </div>
+          <div v-if="queued.length" class="queue-divider">排队中</div>
+          <div v-for="(row, index) in queued" :key="`queue-${row.id}`" class="queue-row">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="q-pos">{{ index + 1 }}</span>
+              <div>
+                <div class="fw-medium">{{ targetLabel(row) }}</div>
+                <div class="cell-sub">{{ row.version || '未填写版本' }}</div>
+              </div>
             </div>
-          </template>
-          <el-table :data="recentDeploys" stripe size="default" empty-text="暂无部署记录">
-            <el-table-column prop="id" label="ID" width="80">
-              <template #default="{ row }">
-                <span class="font-mono text-sm">{{ row.id }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="版本" min-width="100">
-              <template #default="{ row }">
-                {{ row.version || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" effect="light" round>
-                  {{ getStatusText(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="时间" min-width="160">
-              <template #default="{ row }">
-                <span class="text-sm">{{ new Date(row.createdAt).toLocaleString() }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
+            <span :class="statusClass(row.status)">{{ getStatusText(row.status) }}</span>
+          </div>
+        </div>
+        <footer class="panel-foot">
+          <span>按提交顺序执行</span>
+          <router-link to="/deploy">发起部署</router-link>
+        </footer>
+      </section>
+
+      <section class="console-panel">
+        <header class="panel-head">
+          <h3>最近部署</h3>
+          <router-link to="/history">查看全部</router-link>
+        </header>
+        <el-table :data="recentDeploys" empty-text="暂无部署记录" @row-click="(row) => $router.push('/history')">
+          <el-table-column label="时间" width="72">
+            <template #default="{ row }"><span class="font-mono">{{ clockText(row) }}</span></template>
+          </el-table-column>
+          <el-table-column label="目标" min-width="120">
+            <template #default="{ row }">{{ targetLabel(row) }}</template>
+          </el-table-column>
+          <el-table-column label="来源" min-width="100">
+            <template #default="{ row }"><span class="font-mono">{{ row.version || '—' }}</span></template>
+          </el-table-column>
+          <el-table-column label="结果" width="88">
+            <template #default="{ row }"><span :class="statusClass(row.status)">{{ getStatusText(row.status) }}</span></template>
+          </el-table-column>
+          <el-table-column label="耗时" width="80">
+            <template #default="{ row }"><span class="font-mono">{{ durationText(row) }}</span></template>
+          </el-table-column>
+        </el-table>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.stats-row {
-  margin-bottom: var(--spacing-5, 20px);
-}
-
-.stat-card {
-  margin-bottom: var(--spacing-4);
-  border-radius: var(--el-border-radius-round);
-  border: 1px solid var(--el-border-color-light);
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-4);
-  padding: var(--spacing-4) 0;
-}
-
-.stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-icon-blue {
-  background-color: rgba(64, 158, 255, 0.1);
-  color: var(--el-color-primary);
-}
-
-.stat-icon-green {
-  background-color: rgba(103, 194, 58, 0.1);
-  color: var(--el-color-success);
-}
-
-.stat-icon-orange {
-  background-color: rgba(230, 162, 60, 0.1);
-  color: var(--el-color-warning);
-}
-
-.stat-icon-purple {
-  background-color: rgba(144, 147, 153, 0.1);
-  color: var(--el-color-info);
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-label {
-  font-size: var(--text-sm);
-  color: var(--el-text-color-secondary);
-  margin-bottom: var(--spacing-1);
-  font-weight: 500;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
-
-.list-row {
-  margin-top: var(--spacing-4);
-}
-
-.queue-card {
-  margin-bottom: var(--spacing-4);
-  border-radius: var(--el-border-radius-round);
-}
-
-.list-card {
-  margin-bottom: var(--spacing-4);
-  border-radius: var(--el-border-radius-round);
-}
+.stat-label { font-size: 11.5px; color: var(--el-text-color-secondary); }
+.stat-value { display: flex; align-items: baseline; gap: 5px; margin-top: 6px; }
+.stat-value b { font-size: 27px; line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-value span { font-size: 11.5px; color: var(--el-text-color-secondary); font-weight: 400; }
+.stat-sub { margin-top: 5px; font-size: 11.5px; color: var(--el-text-color-secondary); }
+.stat-value-ok b { color: #0e7250; }
+.stat-value-queue b { color: #8a5a06; }
+.stat-value-fail b { color: #ae2a1f; }
+html.dark .stat-value-ok b { color: #7dcea0; }
+html.dark .stat-value-queue b { color: #e0b15a; }
+html.dark .stat-value-fail b { color: #f08178; }
 </style>

@@ -12,10 +12,12 @@ const groups = ref([])
 const servers = ref([])
 const loading = ref(false)
 const groupFilter = ref('')
+const serverQuery = ref('')
 
 const addDialogVisible = ref(false)
 const debugDialogVisible = ref(false)
 const terminalDialogVisible = ref(false)
+const currentTerminalServer = ref(null)
 const agentGuideVisible = ref(false)
 const currentDebugServerId = ref(null)
 const currentTerminalServerId = ref(null)
@@ -23,8 +25,26 @@ const currentTerminalServerId = ref(null)
 const editingServer = ref(null)
 
 const filteredServers = computed(() => {
-  if (!groupFilter.value) return servers.value
-  return servers.value.filter(s => s.groupId === groupFilter.value)
+  const q = serverQuery.value.trim().toLowerCase()
+  return servers.value.filter(s => {
+    if (groupFilter.value && s.groupId !== groupFilter.value) return false
+    if (!q) return true
+    return `${s.name} ${s.host} ${s.port}`.toLowerCase().includes(q)
+  })
+})
+
+const onlineTotal = computed(() => servers.value.filter(s => s.status === 'online').length)
+
+const groupChips = computed(() => {
+  const chips = [{ id: '', name: '全部', count: servers.value.length }]
+  groups.value.forEach(group => {
+    chips.push({
+      id: group.id,
+      name: group.name,
+      count: servers.value.filter(s => s.groupId === group.id).length
+    })
+  })
+  return chips
 })
 
 function getGroupName(groupId) {
@@ -94,6 +114,7 @@ function openDebug(server) {
 }
 
 function openTerminal(server) {
+  currentTerminalServer.value = server
   currentTerminalServerId.value = server.id
   terminalDialogVisible.value = true
 }
@@ -129,37 +150,31 @@ onMounted(() => {
 <template>
   <div class="page-container">
     <div class="page-toolbar">
-      <h2 class="page-title">服务器管理</h2>
-      <div class="toolbar-actions">
-        <el-select
-          v-if="groups.length > 1"
-          v-model="groupFilter"
-          placeholder="按分组筛选"
-          clearable
-          style="width: 160px"
-        >
-          <el-option
-            v-for="g in groups"
-            :key="g.id"
-            :label="g.name"
-            :value="g.id"
-          />
-        </el-select>
-        <el-button :icon="Download" @click="openAgentGuide">
-          下载 Agent
-        </el-button>
-        <el-button type="primary" :icon="Plus" @click="handleAdd">
-          添加服务器
-        </el-button>
-      </div>
+      <h2 class="page-title">服务器列表</h2>
+      <span class="page-note">共 {{ filteredServers.length }} 台 · {{ onlineTotal }} 在线</span>
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <section class="server-panel">
+      <div class="server-toolbar">
+        <div class="chips">
+          <button
+            v-for="chip in groupChips"
+            :key="chip.id || 'all'"
+            type="button"
+            class="rd-chip"
+            :class="{ 'is-on': groupFilter === chip.id }"
+            @click="groupFilter = chip.id"
+          >
+            {{ chip.name }}
+            <span class="rd-chip-count">{{ chip.count }}</span>
+          </button>
+        </div>
+        <el-input v-model="serverQuery" class="server-search" clearable placeholder="搜索名称、主机或分组" />
+      </div>
       <el-table
         v-loading="loading"
         :data="filteredServers"
-        stripe
-        empty-text="暂无数据"
+        empty-text="没有匹配的服务器"
       >
         <el-table-column prop="id" label="ID" width="70">
           <template #default="{ row }">
@@ -186,18 +201,14 @@ onMounted(() => {
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
+        <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag
-              :type="row.status === 'online' ? 'success' : 'danger'"
-              effect="light"
-              round
-            >
-              {{ row.status }}
-            </el-tag>
+            <span :class="row.status === 'online' ? 'rd-status rd-ok' : 'rd-status rd-off'">
+              {{ row.status === 'online' ? '在线' : '离线' }}
+            </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="500" fixed="right">
+        <el-table-column label="操作" min-width="292" class-name="col-actions" align="right">
           <template #default="{ row }">
             <el-button text type="primary" :icon="Connection" @click="handleTest(row)">
               测试
@@ -223,7 +234,14 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+      <footer class="panel-foot">
+        <span>离线服务器不参与批量部署</span>
+        <span class="toolbar-actions">
+          <el-button :icon="Download" @click="openAgentGuide">下载 Agent</el-button>
+          <el-button type="primary" :icon="Plus" @click="handleAdd">添加服务器</el-button>
+        </span>
+      </footer>
+    </section>
 
     <ServerDialog
       v-model="addDialogVisible"
@@ -240,6 +258,7 @@ onMounted(() => {
     <TerminalDialog
       v-model="terminalDialogVisible"
       :server-id="currentTerminalServerId"
+      :server="currentTerminalServer"
     />
 
     <AgentInstallGuide
@@ -248,3 +267,39 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.server-panel {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.server-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.server-search {
+  width: 200px;
+  margin-left: auto;
+}
+
+@media (max-width: 860px) {
+  .server-search {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+</style>

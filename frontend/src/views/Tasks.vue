@@ -9,6 +9,7 @@ const groups = ref([])
 const tasks = ref([])
 const loading = ref(false)
 const groupFilter = ref('')
+const keyword = ref('')
 const createDialogVisible = ref(false)
 const editDialogVisible = ref(false)
 const copyDialogVisible = ref(false)
@@ -16,8 +17,12 @@ const viewDialogVisible = ref(false)
 const currentTask = ref(null)
 
 const filteredTasks = computed(() => {
-  if (!groupFilter.value) return tasks.value
-  return tasks.value.filter(t => t.groupId === groupFilter.value)
+  const q = keyword.value.trim().toLowerCase()
+  return tasks.value.filter(task => {
+    if (groupFilter.value && task.groupId !== groupFilter.value) return false
+    if (!q) return true
+    return `${task.name} ${task.description || ''}`.toLowerCase().includes(q)
+  })
 })
 
 function getGroupName(groupId) {
@@ -29,10 +34,6 @@ function getGroupName(groupId) {
 function getTaskTypeLabel(type) {
   const map = { deploy: '部署任务', command: '命令任务' }
   return map[type] || type
-}
-
-function getTaskTypeTag(type) {
-  return type === 'deploy' ? 'primary' : 'success'
 }
 
 function getJenkinsEnabledLabel(enabled) {
@@ -105,46 +106,28 @@ onMounted(() => {
 <template>
   <div class="page-container">
     <div class="page-toolbar">
-      <h2 class="page-title">任务管理</h2>
-      <div class="toolbar-actions">
-        <el-select
-          v-if="groups.length > 1"
-          v-model="groupFilter"
-          placeholder="按分组筛选"
-          clearable
-          style="width: 160px"
-        >
-          <el-option
-            v-for="g in groups"
-            :key="g.id"
-            :label="g.name"
-            :value="g.id"
-          />
-        </el-select>
-        <el-button type="primary" :icon="Plus" @click="handleAdd">
-          创建任务
-        </el-button>
-      </div>
+      <h2 class="page-title">任务列表</h2>
+      <el-button type="primary" :icon="Plus" @click="handleAdd">创建任务</el-button>
     </div>
 
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="filteredTasks"
-        stripe
-        empty-text="暂无数据"
-      >
-        <el-table-column prop="id" label="ID" width="70">
+    <section class="console-panel">
+      <div class="console-toolbar">
+        <el-select v-model="groupFilter" placeholder="全部分组" style="width: 160px">
+          <el-option label="全部分组" value="" />
+          <el-option v-for="group in groups" :key="group.id" :label="group.name" :value="group.id" />
+        </el-select>
+        <el-input v-model="keyword" class="console-search" clearable placeholder="搜索任务名称" />
+      </div>
+      <el-table v-loading="loading" :data="filteredTasks" empty-text="未找到匹配的任务">
+        <el-table-column label="名称" min-width="180">
           <template #default="{ row }">
-            <span class="font-mono">{{ row.id }}</span>
+            <span class="fw-medium">{{ row.name }}</span>
+            <span v-if="row.description" class="cell-sub">{{ row.description }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="140" />
         <el-table-column label="类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="getTaskTypeTag(row.taskType)" effect="light">
-              {{ getTaskTypeLabel(row.taskType) }}
-            </el-tag>
+            {{ getTaskTypeLabel(row.taskType) }}
           </template>
         </el-table-column>
         <el-table-column label="分组" width="180">
@@ -157,7 +140,7 @@ onMounted(() => {
             <span class="text-sm">{{ new Date(row.createdAt).toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="400" fixed="right">
+        <el-table-column label="操作" min-width="248" class-name="col-actions" align="right">
           <template #default="{ row }">
             <el-button text type="primary" :icon="View" @click="handleView(row)">查看</el-button>
             <el-button text type="primary" :icon="Edit" @click="handleEdit(row)">编辑</el-button>
@@ -168,7 +151,8 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+      <footer class="panel-foot">任务模板在部署操作中可被选择复用</footer>
+    </section>
 
     <!-- 创建任务对话框 -->
     <TaskDialog
@@ -196,32 +180,34 @@ onMounted(() => {
     />
 
     <!-- 查看详情只读对话框 -->
-    <el-dialog
-      v-model="viewDialogVisible"
-      title="任务详情"
-      width="600"
-    >
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="ID">{{ currentTask?.id }}</el-descriptions-item>
-        <el-descriptions-item label="名称">{{ currentTask?.name }}</el-descriptions-item>
-        <el-descriptions-item label="类型">{{ getTaskTypeLabel(currentTask?.taskType) }}</el-descriptions-item>
-        <el-descriptions-item label="分组">{{ getGroupName(currentTask?.groupId) }}</el-descriptions-item>
-        <el-descriptions-item label="部署路径">{{ currentTask?.deployPath || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="前置命令">{{ currentTask?.beforeCommand || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="后置命令">{{ currentTask?.afterCommand || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="Jenkins 集成">{{ getJenkinsEnabledLabel(currentTask?.jenkinsEnabled) }}</el-descriptions-item>
+    <el-dialog v-model="viewDialogVisible" width="560">
+      <template #header>
+        <div>
+          <h2 class="od-dialog-title">查看任务</h2>
+          <p class="od-dialog-sub">只读查看任务编排内容</p>
+        </div>
+      </template>
+      <dl class="task-detail">
+        <div><dt>名称</dt><dd>{{ currentTask?.name || '—' }}</dd></div>
+        <div><dt>类型</dt><dd>{{ getTaskTypeLabel(currentTask?.taskType) }}</dd></div>
+        <div><dt>分组</dt><dd>{{ getGroupName(currentTask?.groupId) }}</dd></div>
+        <div><dt>部署路径</dt><dd class="font-mono">{{ currentTask?.deployPath || '—' }}</dd></div>
+        <div><dt>前置命令</dt><dd class="font-mono">{{ currentTask?.beforeCommand || '—' }}</dd></div>
+        <div><dt>后置命令</dt><dd class="font-mono">{{ currentTask?.afterCommand || '—' }}</dd></div>
+        <div><dt>Jenkins</dt><dd>{{ getJenkinsEnabledLabel(currentTask?.jenkinsEnabled) }}</dd></div>
         <template v-if="currentTask?.jenkinsEnabled">
-          <el-descriptions-item label="Jenkins 地址">{{ currentTask?.jenkinsUrl }}</el-descriptions-item>
-          <el-descriptions-item label="Job 名称">{{ currentTask?.jenkinsJobName }}</el-descriptions-item>
-          <el-descriptions-item label="构件路径">{{ currentTask?.jenkinsArtifactPath }}</el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ currentTask?.jenkinsUser || '-' }}</el-descriptions-item>
+          <div><dt>地址</dt><dd class="font-mono">{{ currentTask?.jenkinsUrl || '—' }}</dd></div>
+          <div><dt>Job</dt><dd class="font-mono">{{ currentTask?.jenkinsJobName || '—' }}</dd></div>
+          <div><dt>构件路径</dt><dd class="font-mono">{{ currentTask?.jenkinsArtifactPath || '—' }}</dd></div>
+          <div><dt>用户名</dt><dd>{{ currentTask?.jenkinsUser || '—' }}</dd></div>
         </template>
-        <el-descriptions-item label="描述">{{ currentTask?.description || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ currentTask?.createdAt ? new Date(currentTask.createdAt).toLocaleString() : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ currentTask?.updatedAt ? new Date(currentTask.updatedAt).toLocaleString() : '-' }}</el-descriptions-item>
-      </el-descriptions>
+        <div><dt>描述</dt><dd>{{ currentTask?.description || '—' }}</dd></div>
+      </dl>
       <template #footer>
-        <el-button @click="viewDialogVisible = false">关闭</el-button>
+        <span class="od-dialog-note">创建于 {{ currentTask?.createdAt ? new Date(currentTask.createdAt).toLocaleString() : '—' }}</span>
+        <div class="od-dialog-actions">
+          <el-button @click="viewDialogVisible = false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>

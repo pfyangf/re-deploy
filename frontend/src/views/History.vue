@@ -5,10 +5,49 @@ import { ElMessage } from 'element-plus'
 
 const history = ref([])
 const loading = ref(false)
-
-const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailData = ref(null)
+
+const statusFilter = ref('all')
+const keyword = ref('')
+
+const statusOptions = [
+  { id: 'all', label: '全部' },
+  { id: 'success', label: '成功' },
+  { id: 'failed', label: '失败' },
+  { id: 'running', label: '执行中' },
+  { id: 'pending', label: '排队中' },
+  { id: 'cancelled', label: '已取消' }
+]
+
+const statusCounts = computed(() => {
+  const counts = { all: history.value.length, success: 0, failed: 0, running: 0, pending: 0, cancelled: 0 }
+  history.value.forEach(item => {
+    if (counts[item.status] != null) counts[item.status] += 1
+  })
+  return counts
+})
+
+const filteredHistory = computed(() => {
+  const q = keyword.value.trim().toLowerCase()
+  return history.value.filter(item => {
+    if (statusFilter.value !== 'all' && item.status !== statusFilter.value) return false
+    if (!q) return true
+    const text = `${item.id} ${item.taskName || ''} ${item.version || ''} ${item.taskId || ''}`.toLowerCase()
+    return text.includes(q)
+  })
+})
+
+function statusClass(status) {
+  const map = {
+    success: 'rd-status rd-ok',
+    failed: 'rd-status rd-fail',
+    running: 'rd-status rd-run',
+    pending: 'rd-status rd-queue',
+    cancelled: 'rd-status rd-off'
+  }
+  return map[status] || 'rd-status rd-off'
+}
 
 const detailSegments = computed(() => {
   if (!detailData.value || !detailData.value.detailLogs) return []
@@ -36,17 +75,6 @@ async function loadHistory() {
   }
 }
 
-function getStatusType(status) {
-  const map = {
-    success: 'success',
-    failed: 'danger',
-    running: 'warning',
-    pending: 'info',
-    cancelled: 'info'
-  }
-  return map[status] || 'info'
-}
-
 function getStatusText(status) {
   const map = {
     success: '成功',
@@ -58,8 +86,16 @@ function getStatusText(status) {
   return map[status] || status
 }
 
+function durationText(row) {
+  if (!row.startedAt || !row.completedAt) return '—'
+  const ms = new Date(row.completedAt) - new Date(row.startedAt)
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  const sec = Math.round(ms / 1000)
+  if (sec < 60) return `${sec}s`
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`
+}
+
 async function viewDetail(item) {
-  detailVisible.value = true
   detailLoading.value = true
   detailData.value = null
   try {
@@ -81,133 +117,229 @@ onMounted(() => {
 <template>
   <div class="page-container">
     <div class="page-toolbar">
-      <h2 class="page-title">部署历史</h2>
-      <el-button @click="loadHistory">刷新</el-button>
+      <h2 class="page-title">部署记录</h2>
+      <div class="toolbar-actions">
+        <span class="page-note">共 {{ history.length }} 条</span>
+        <el-button @click="loadHistory">刷新</el-button>
+      </div>
     </div>
 
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="history"
-        stripe
-        empty-text="暂无部署记录"
-      >
-        <el-table-column prop="id" label="ID" width="70">
-          <template #default="{ row }">
-            <span class="font-mono">{{ row.id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="任务" min-width="160">
-          <template #default="{ row }">
-            <span class="fw-medium">{{ row.taskName || (row.taskId ? '任务#' + row.taskId : '-') }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="版本" min-width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.version" type="info" effect="plain" size="small">{{ row.version }}</el-tag>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" effect="light" round>
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="开始时间" min-width="160">
-          <template #default="{ row }">
-            <span class="text-sm">{{ row.startedAt ? new Date(row.startedAt).toLocaleString() : '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="完成时间" min-width="160">
-          <template #default="{ row }">
-            <span class="text-sm">{{ row.completedAt ? new Date(row.completedAt).toLocaleString() : '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button text type="primary" @click="viewDetail(row)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <div class="history-grid">
+      <section class="step-panel">
+        <div class="history-toolbar">
+          <div class="chips">
+            <button
+              v-for="item in statusOptions"
+              :key="item.id"
+              type="button"
+              class="rd-chip"
+              :class="{ 'is-on': statusFilter === item.id }"
+              @click="statusFilter = item.id"
+            >
+              {{ item.label }}
+              <span class="rd-chip-count">{{ statusCounts[item.id] || 0 }}</span>
+            </button>
+          </div>
+          <el-input
+            v-model="keyword"
+            class="history-search"
+            clearable
+            placeholder="搜索任务、版本或 ID"
+          />
+        </div>
+        <el-table
+          v-loading="loading"
+          :data="filteredHistory"
+          empty-text="没有匹配的部署记录"
+          highlight-current-row
+          @row-click="viewDetail"
+        >
+          <el-table-column label="开始时间" min-width="150">
+            <template #default="{ row }">
+              <span class="font-mono">{{ row.startedAt ? new Date(row.startedAt).toLocaleString() : '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="任务" min-width="140">
+            <template #default="{ row }">
+              {{ row.taskName || (row.taskId ? '任务#' + row.taskId : '-') }}
+            </template>
+          </el-table-column>
+          <el-table-column label="版本" min-width="110">
+            <template #default="{ row }">
+              <span class="font-mono">{{ row.version || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="结果" width="96">
+            <template #default="{ row }">
+              <span :class="statusClass(row.status)">{{ getStatusText(row.status) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="耗时" width="80">
+            <template #default="{ row }">
+              <span class="font-mono">{{ durationText(row) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <footer class="panel-foot">共 {{ filteredHistory.length }} 条记录</footer>
+      </section>
 
-    <el-dialog
-      v-model="detailVisible"
-      title="部署详情"
-      width="80%"
-      top="5vh"
-      destroy-on-close
-    >
-      <div v-loading="detailLoading">
-        <template v-if="detailData">
-          <!-- 基本信息 -->
-          <el-descriptions :column="3" border size="small" class="detail-desc">
-            <el-descriptions-item label="ID">{{ detailData.id }}</el-descriptions-item>
-            <el-descriptions-item label="任务">{{ detailData.taskName || (detailData.taskId ? '任务#' + detailData.taskId : '-') }}</el-descriptions-item>
-            <el-descriptions-item label="版本">{{ detailData.version || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="getStatusType(detailData.status)" effect="light" round size="small">{{ getStatusText(detailData.status) }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="开始">{{ detailData.startedAt ? new Date(detailData.startedAt).toLocaleString() : '-' }}</el-descriptions-item>
-            <el-descriptions-item label="完成">{{ detailData.completedAt ? new Date(detailData.completedAt).toLocaleString() : '-' }}</el-descriptions-item>
-            <el-descriptions-item v-if="detailData.errorMessage" label="错误" :span="3">
-              <span class="text-error">{{ detailData.errorMessage }}</span>
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <!-- Summary 日志 -->
-          <div class="section-title">概要</div>
+      <aside class="step-panel history-detail" v-loading="detailLoading">
+        <header class="step-head">
+          <h3>日志详情</h3>
+          <span v-if="detailData" :class="statusClass(detailData.status)">{{ getStatusText(detailData.status) }}</span>
+        </header>
+        <div v-if="detailData" class="step-body">
+          <dl class="kv">
+            <div><dt>ID</dt><dd class="font-mono">{{ detailData.id }}</dd></div>
+            <div><dt>任务</dt><dd>{{ detailData.taskName || (detailData.taskId ? '任务#' + detailData.taskId : '-') }}</dd></div>
+            <div><dt>版本</dt><dd class="font-mono">{{ detailData.version || '-' }}</dd></div>
+            <div><dt>开始</dt><dd>{{ detailData.startedAt ? new Date(detailData.startedAt).toLocaleString() : '-' }}</dd></div>
+            <div><dt>完成</dt><dd>{{ detailData.completedAt ? new Date(detailData.completedAt).toLocaleString() : '-' }}</dd></div>
+          </dl>
+          <p v-if="detailData.errorMessage" class="error-line">{{ detailData.errorMessage }}</p>
+          <h4>概要</h4>
           <pre v-if="detailData.logs" class="log-block">{{ detailData.logs }}</pre>
-          <span v-else class="text-muted">（无概要日志）</span>
-
-          <!-- 详细日志分段 -->
-          <div class="section-title">详细日志</div>
+          <p v-else class="empty-note">无概要日志</p>
+          <h4>详细日志</h4>
           <template v-if="detailData.detailLogs">
-            <el-collapse v-if="detailSegments.length">
-              <el-collapse-item
-                v-for="(seg, idx) in detailSegments"
-                :key="idx"
-                :title="seg.title"
-                :name="idx"
-              >
+            <div v-if="detailSegments.length" class="log-segments">
+              <section v-for="(seg, idx) in detailSegments" :key="idx">
+                <div class="seg-title">{{ seg.title }}</div>
                 <pre class="log-block">{{ seg.content }}</pre>
-              </el-collapse-item>
-            </el-collapse>
+              </section>
+            </div>
             <pre v-else class="log-block">{{ detailData.detailLogs }}</pre>
           </template>
-          <span v-else class="text-muted">该记录为历史数据，无详细日志</span>
-        </template>
-      </div>
-    </el-dialog>
+          <p v-else class="empty-note">该记录没有分段日志</p>
+        </div>
+        <p v-else class="empty-detail">点击左侧一条记录，在这里查看分段日志。</p>
+      </aside>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.detail-desc {
-  margin-bottom: var(--spacing-4);
+.history-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+  gap: 12px;
+  align-items: start;
 }
 
-.section-title {
-  margin: var(--spacing-4) 0 var(--spacing-2);
+.step-panel {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.history-search {
+  width: 200px;
+  margin-left: auto;
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.step-head h3,
+.step-body h4 {
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+}
+
+.step-body {
+  padding: 14px 16px;
+}
+
+.step-body h4 {
+  margin: 14px 0 8px;
+}
+
+.kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--el-border-color);
+  font-size: 12.5px;
+}
+
+.kv dt {
+  color: var(--el-text-color-secondary);
+}
+
+.kv dd {
+  margin: 0;
+  text-align: right;
+}
+
+.error-line,
+.empty-note,
+.empty-detail {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.error-line {
+  color: #ae2a1f;
+}
+
+.empty-detail {
+  padding: 28px 16px;
+}
+
+.seg-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .log-block {
-  margin: 0;
-  padding: var(--spacing-3);
+  margin: 0 0 10px;
+  padding: 10px 12px;
   background: var(--rd-surface-console);
   color: var(--rd-surface-console-ink);
   border: 1px solid var(--rd-border-console);
-  border-radius: var(--el-border-radius-base);
+  border-radius: 4px;
   font-family: var(--el-font-family-mono);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 400px;
-  overflow-y: auto;
+  max-height: 240px;
+  overflow: auto;
+}
+
+@media (max-width: 980px) {
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-search {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 </style>

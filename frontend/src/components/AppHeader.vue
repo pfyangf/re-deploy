@@ -8,6 +8,7 @@ const store = useAppStore()
 const route = useRoute()
 
 const pageTitle = computed(() => route.meta?.title || 'Re-Deploy')
+const pageSubtitle = computed(() => route.meta?.subtitle || '')
 </script>
 
 <template>
@@ -19,7 +20,10 @@ const pageTitle = computed(() => route.meta?.title || 'Re-Deploy')
         :icon="store.sidebarCollapsed ? Expand : Fold"
         @click="store.toggleSidebar"
       />
-      <h1 class="page-title">{{ pageTitle }}</h1>
+      <div class="page-heading">
+        <h1 class="page-title">{{ pageTitle }}</h1>
+        <p v-if="pageSubtitle" class="page-subtitle">{{ pageSubtitle }}</p>
+      </div>
     </div>
     <div class="header-right">
       <el-button
@@ -35,11 +39,12 @@ const pageTitle = computed(() => route.meta?.title || 'Re-Deploy')
 
 <style scoped>
 .app-header {
-  height: 60px;
+  --el-header-height: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--spacing-6);
+  padding: 0 28px;
   background-color: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color);
 }
@@ -55,12 +60,27 @@ const pageTitle = computed(() => route.meta?.title || 'Re-Deploy')
   align-items: center;
 }
 
+.page-heading {
+  min-width: 0;
+}
+
 .page-title {
-  font-size: 1.25rem;
+  font-size: 15px;
   font-weight: 600;
   margin: 0;
+  line-height: 1.2;
   color: var(--el-text-color-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
+}
+
+.page-subtitle {
+  margin: 1px 0 0;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .theme-label {

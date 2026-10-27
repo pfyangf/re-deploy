@@ -1,11 +1,18 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import api from '../api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Delete } from '@element-plus/icons-vue'
 
 const artifacts = ref([])
 const loading = ref(false)
+const keyword = ref('')
+
+const visibleArtifacts = computed(() => {
+  const q = keyword.value.trim().toLowerCase()
+  if (!q) return artifacts.value
+  return artifacts.value.filter(item => `${item.filename} ${item.md5 || ''}`.toLowerCase().includes(q))
+})
 
 function formatSize(bytes) {
   if (!bytes) return '-'
@@ -65,18 +72,12 @@ onMounted(() => {
       <el-button @click="loadArtifacts">刷新</el-button>
     </div>
 
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="artifacts"
-        stripe
-        empty-text="暂无构建产物"
-      >
-        <el-table-column prop="id" label="ID" width="70">
-          <template #default="{ row }">
-            <span class="font-mono">{{ row.id }}</span>
-          </template>
-        </el-table-column>
+    <section class="console-panel">
+      <div class="console-toolbar">
+        <el-input v-model="keyword" class="console-search" clearable placeholder="搜索文件名或 MD5" style="margin-left: 0" />
+        <span class="page-note">共 {{ artifacts.length }} 个产物</span>
+      </div>
+      <el-table v-loading="loading" :data="visibleArtifacts" empty-text="未找到匹配的构建产物">
         <el-table-column prop="filename" label="文件名" min-width="200">
           <template #default="{ row }">
             <span class="fw-medium">{{ row.filename }}</span>
@@ -97,7 +98,7 @@ onMounted(() => {
             <span class="text-sm">{{ new Date(row.uploadedAt).toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="148" class-name="col-actions" align="right">
           <template #default="{ row }">
             <el-button
               text
@@ -118,7 +119,7 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
   </div>
 </template>
 

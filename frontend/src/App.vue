@@ -28,7 +28,7 @@ const store = useAppStore()
 }
 
 .app-main {
-  padding: var(--spacing-6);
+  padding: 20px 28px 40px;
   background-color: var(--el-bg-color-page);
   overflow-y: auto;
 }
