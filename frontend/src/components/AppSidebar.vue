@@ -1,40 +1,34 @@
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../store/app'
-import {
-  Odometer, Folder, Monitor, List, Promotion, Clock, Files, Bell, Download, Setting
-} from '@element-plus/icons-vue'
+import * as Icons from '@element-plus/icons-vue'
+import { authState } from '../utils/session'
 
 const store = useAppStore()
 const route = useRoute()
 
-const groups = [
-  { label: '总览', items: [{ index: '/dashboard', title: '仪表盘', icon: Odometer }] },
-  {
-    label: '资源',
-    items: [
-      { index: '/groups', title: '分组管理', icon: Folder },
-      { index: '/servers', title: '服务器管理', icon: Monitor },
-      { index: '/tasks', title: '任务管理', icon: List },
-    ],
-  },
-  {
-    label: '部署',
-    items: [
-      { index: '/deploy', title: '部署操作', icon: Promotion },
-      { index: '/history', title: '部署历史', icon: Clock },
-      { index: '/artifacts', title: '构建产物', icon: Files },
-    ],
-  },
-  {
-    label: '运维',
-    items: [
-      { index: '/notifications', title: '通知管理', icon: Bell },
-      { index: '/downloads', title: '远端下载', icon: Download },
-    ],
-  },
-  { label: '系统', items: [{ index: '/settings', title: '系统设置', icon: Setting }] },
-]
+const groups = computed(() => {
+  const menus = authState.menus || []
+  const parents = menus
+    .filter((menu) => menu.menuType === 'group')
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  return parents.map((parent) => ({
+    label: parent.name,
+    items: menus
+      .filter((menu) => menu.menuType === 'menu' && menu.parentId === parent.id && menu.path)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((menu) => ({
+        index: menu.path,
+        title: menu.name,
+        icon: Icons[menu.icon] || Icons.Menu,
+      })),
+  })).filter((group) => group.items.length)
+})
+
+function iconOf(icon) {
+  return icon || Icons.Menu
+}
 </script>
 
 <template>
@@ -64,7 +58,7 @@ const groups = [
           :aria-current="route.path === item.index ? 'page' : undefined"
           :title="store.sidebarCollapsed ? item.title : undefined"
         >
-          <el-icon :size="16"><component :is="item.icon" /></el-icon>
+          <el-icon :size="16"><component :is="iconOf(item.icon)" /></el-icon>
           <span v-show="!store.sidebarCollapsed" class="nav-label">{{ item.title }}</span>
         </router-link>
       </div>

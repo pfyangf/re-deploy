@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../api/client'
+import { authToken } from '../utils/session'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Delete, Refresh, Search, CircleClose, Document } from '@element-plus/icons-vue'
 
@@ -184,7 +185,7 @@ function stopPolling() {
 async function handleDownload(row) {
   const url = api.getRemoteDownloadFileUrl(row.id)
   // 用隐藏的 a 标签下载
-  const token = localStorage.getItem('adminToken') || ''
+  const token = authToken()
   // fetch 拿 blob 加 header，再触发下载
   try {
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })

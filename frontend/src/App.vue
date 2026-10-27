@@ -1,13 +1,14 @@
 <script setup>
-import { useAppStore } from './store/app'
+import { useRoute } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import AppHeader from './components/AppHeader.vue'
 
-const store = useAppStore()
+const route = useRoute()
 </script>
 
 <template>
-  <el-container class="app-container">
+  <router-view v-if="route.meta.public" />
+  <el-container v-else class="app-container">
     <AppSidebar />
     <el-container direction="vertical">
       <AppHeader />

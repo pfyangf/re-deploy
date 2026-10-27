@@ -12,7 +12,7 @@
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/eclipse-temurin:17-jre-alpine
 
 # 基础工具 + 时区
-RUN apk add --no-cache tzdata bash curl \
+RUN apk add --no-cache tzdata bash curl fontconfig ttf-dejavu \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 

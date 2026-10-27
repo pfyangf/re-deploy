@@ -1,14 +1,28 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../store/app'
 import { Fold, Expand, Moon, Sunny } from '@element-plus/icons-vue'
+import api from '../api/client'
+import { authState, clearSession } from '../utils/session'
 
 const store = useAppStore()
 const route = useRoute()
+const router = useRouter()
 
 const pageTitle = computed(() => route.meta?.title || 'Re-Deploy')
 const pageSubtitle = computed(() => route.meta?.subtitle || '')
+const who = computed(() => authState.displayName || authState.username || '')
+
+async function logout() {
+  try {
+    await api.logout()
+  } catch {
+    // 会话已经失效时直接清本地状态
+  }
+  clearSession()
+  router.replace('/login')
+}
 </script>
 
 <template>
@@ -26,6 +40,8 @@ const pageSubtitle = computed(() => route.meta?.subtitle || '')
       </div>
     </div>
     <div class="header-right">
+      <span v-if="who" class="who">{{ who }}</span>
+      <button type="button" class="topbar-logout" @click="logout">退出</button>
       <el-button
         text
         :icon="store.isDark ? Sunny : Moon"
@@ -58,6 +74,33 @@ const pageSubtitle = computed(() => route.meta?.subtitle || '')
 .header-right {
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.who {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+}
+
+.topbar-logout {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-bg-color);
+  font-size: 11.5px;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar-logout:hover {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
 }
 
 .page-heading {

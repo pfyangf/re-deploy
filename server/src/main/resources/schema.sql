@@ -215,3 +215,79 @@ CREATE TABLE `system_settings`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- 权限：用户、角色、菜单、登录会话、验证码免验状态（启动期以 migration/V010__rbac.sql 为准）
+CREATE TABLE IF NOT EXISTS `rbac_user` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `username` varchar(32) NOT NULL,
+  `password_hash` varchar(100) NOT NULL,
+  `display_name` varchar(32) NULL,
+  `enabled` tinyint NOT NULL DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rbac_user_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_role` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `code` varchar(32) NOT NULL,
+  `name` varchar(32) NOT NULL,
+  `description` varchar(200) NULL,
+  `builtin` tinyint NOT NULL DEFAULT 0,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rbac_role_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_menu` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `menu_key` varchar(64) NOT NULL,
+  `parent_id` bigint NULL,
+  `menu_type` varchar(16) NOT NULL,
+  `name` varchar(32) NOT NULL,
+  `path` varchar(128) NULL,
+  `icon` varchar(64) NULL,
+  `sort_order` int NOT NULL DEFAULT 0,
+  `visible` tinyint NOT NULL DEFAULT 1,
+  `builtin` tinyint NOT NULL DEFAULT 0,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rbac_menu_key` (`menu_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_user_role` (
+  `user_id` bigint NOT NULL,
+  `role_id` bigint NOT NULL,
+  PRIMARY KEY (`user_id`, `role_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_role_menu` (
+  `role_id` bigint NOT NULL,
+  `menu_id` bigint NOT NULL,
+  PRIMARY KEY (`role_id`, `menu_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_session` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `token` varchar(64) NOT NULL,
+  `user_id` bigint NULL,
+  `login_type` varchar(16) NOT NULL,
+  `expires_at` timestamp NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_rbac_session_token` (`token`),
+  KEY `idx_rbac_session_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `rbac_login_guard` (
+  `client_key` varchar(64) NOT NULL,
+  `captcha_code` varchar(8) NULL,
+  `captcha_expire_at` timestamp NULL,
+  `trust_until` timestamp NULL,
+  `force_captcha` tinyint NOT NULL DEFAULT 0,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`client_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

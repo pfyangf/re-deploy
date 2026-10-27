@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { authToken, clearSession } from '../utils/session'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -9,22 +10,24 @@ const api = axios.create({
 
 // Request interceptor - add auth token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('adminToken')
+  const token = authToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
 
-// Response interceptor - handle 401
+// 401：会话失效后回到登录页。登录接口自己的 401 是密钥或密码错误，不在这里打断。
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401) {
-      const token = prompt('请输入管理Token:')
-      if (token) {
-        localStorage.setItem('adminToken', token)
-        window.location.reload()
+    const url = error.config?.url || ''
+    if (error.response?.status === 401 && !url.includes('/api/auth/login')) {
+      clearSession()
+      const hash = window.location.hash || ''
+      if (!hash.startsWith('#/login')) {
+        const redirect = hash.replace(/^#/, '') || '/dashboard'
+        window.location.hash = `#/login?redirect=${encodeURIComponent(redirect)}`
       }
     }
     return Promise.reject(error)
@@ -87,4 +90,26 @@ export default {
   // System settings
   getSystemSettings: () => api.get('/api/settings'),
   updateSystemSettings: (data) => api.put('/api/settings', data),
+
+  // Auth
+  login: (data) => api.post('/api/auth/login', data),
+  logout: () => api.post('/api/auth/logout'),
+  me: () => api.get('/api/auth/me'),
+  getCaptchaStatus: (clientKey) => api.get('/api/auth/captcha/status', { params: { clientKey } }),
+  getCaptcha: (clientKey) => api.get('/api/auth/captcha', { params: { clientKey }, responseType: 'blob' }),
+
+  // RBAC
+  getUsers: () => api.get('/api/system/users'),
+  createUser: (data) => api.post('/api/system/users', data),
+  updateUser: (id, data) => api.put(`/api/system/users/${id}`, data),
+  deleteUser: (id) => api.delete(`/api/system/users/${id}`),
+  getRoles: () => api.get('/api/system/roles'),
+  createRole: (data) => api.post('/api/system/roles', data),
+  updateRole: (id, data) => api.put(`/api/system/roles/${id}`, data),
+  deleteRole: (id) => api.delete(`/api/system/roles/${id}`),
+  assignRoleMenus: (id, menuIds) => api.put(`/api/system/roles/${id}/menus`, { menuIds }),
+  getMenus: () => api.get('/api/system/menus'),
+  createMenu: (data) => api.post('/api/system/menus', data),
+  updateMenu: (id, data) => api.put(`/api/system/menus/${id}`, data),
+  deleteMenu: (id) => api.delete(`/api/system/menus/${id}`),
 }
