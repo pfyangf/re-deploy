@@ -14,6 +14,7 @@ import NoAccess from '../views/NoAccess.vue'
 import AccessUsers from '../views/AccessUsers.vue'
 import AccessRoles from '../views/AccessRoles.vue'
 import AccessMenus from '../views/AccessMenus.vue'
+import AccessApiKeys from '../views/AccessApiKeys.vue'
 import api from '../api/client'
 import { applyProfile, authState, canAccess, firstMenuPath, isLoggedIn } from '../utils/session'
 
@@ -105,6 +106,12 @@ const routes = [
     name: 'access-menus',
     component: AccessMenus,
     meta: { title: '菜单管理', subtitle: '导航分组、路径与显示', menu: '/access/menus' }
+  },
+  {
+    path: '/access/api-keys',
+    name: 'access-api-keys',
+    component: AccessApiKeys,
+    meta: { title: 'API 密钥', subtitle: '给智能体调用的可吊销密钥', menu: '/access/api-keys' }
   },
   {
     path: '/no-access',

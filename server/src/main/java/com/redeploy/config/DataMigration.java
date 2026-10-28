@@ -47,6 +47,8 @@ public class DataMigration {
         ensureColumnExists("servers", "ssh_port", "INTEGER DEFAULT 22");
         ensureColumnExists("tasks", "group_id", "INTEGER");
         ensureColumnExists("deploy_history", "detail_logs", "LONGTEXT");
+        ensureColumnExists("deploy_history", "request_params", "LONGTEXT");
+        bindApiKeyOwners();
 
         // Migrate existing data: group_name -> group_id
         migrateGroupNamesToGroupId();
@@ -65,6 +67,28 @@ public class DataMigration {
             }
         } catch (Exception e) {
             System.err.println("Failed to ensure column " + tableName + "." + columnName + ": " + e.getMessage());
+        }
+    }
+
+    /** 已有的 cursor 密钥归到 yangpengfei，并把调用记录上的用户补齐。 */
+    private void bindApiKeyOwners() {
+        ensureColumnExists("api_key", "user_id", "BIGINT NULL");
+        ensureColumnExists("api_key_call", "user_id", "BIGINT NULL");
+        ensureColumnExists("api_key_call", "username", "VARCHAR(64) NULL");
+        try {
+            int bound = jdbcTemplate.update(
+                    "UPDATE api_key k JOIN rbac_user u ON u.username = ? " +
+                            "SET k.user_id = u.id WHERE k.name = ? AND k.user_id IS NULL",
+                    "yangpengfei", "cursor");
+            jdbcTemplate.update(
+                    "UPDATE api_key_call c JOIN api_key k ON k.id = c.api_key_id " +
+                            "JOIN rbac_user u ON u.id = k.user_id " +
+                            "SET c.user_id = u.id, c.username = u.username WHERE c.user_id IS NULL");
+            if (bound > 0) {
+                System.out.println("Bound API key cursor to yangpengfei");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to bind API key owner: " + e.getMessage());
         }
     }
 

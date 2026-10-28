@@ -112,4 +112,10 @@ export default {
   createMenu: (data) => api.post('/api/system/menus', data),
   updateMenu: (id, data) => api.put(`/api/system/menus/${id}`, data),
   deleteMenu: (id) => api.delete(`/api/system/menus/${id}`),
+  getApiKeys: () => api.get('/api/system/api-keys'),
+  getApiKeyOwners: () => api.get('/api/system/api-keys/owners'),
+  createApiKey: (data) => api.post('/api/system/api-keys', data),
+  updateApiKey: (id, data) => api.put(`/api/system/api-keys/${id}`, data),
+  deleteApiKey: (id) => api.delete(`/api/system/api-keys/${id}`),
+  getApiKeyStats: (params) => api.get('/api/system/api-keys/stats', { params }),
 }

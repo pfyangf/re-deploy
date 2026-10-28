@@ -15,6 +15,7 @@ public final class MenuAccess {
         if (uri.startsWith("/api/system/roles")) return "/access/roles";
         if ("GET".equals(method) && uri.startsWith("/api/system/menus")) return "ANY:/access/menus,/access/roles";
         if (uri.startsWith("/api/system/menus")) return "/access/menus";
+        if (uri.startsWith("/api/system/api-keys")) return "/access/api-keys";
         if (uri.startsWith("/api/system")) return "ADMIN";
 
         if ("GET".equals(method) && "/api/groups".equals(uri)) {

@@ -208,6 +208,7 @@ async function handleSubmit() {
       taskId: parseInt(form.value.taskId),
       serverIds: form.value.serverIds,
       version: form.value.version,
+      groupId: selectedGroupId.value,
       params: {}
     }
     // Add jenkins build number to params if present

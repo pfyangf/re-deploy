@@ -49,6 +49,21 @@ function statusClass(status) {
   return map[status] || 'rd-status rd-off'
 }
 
+const detailTargets = computed(() => {
+  const list = detailData.value && detailData.value.targets
+  return Array.isArray(list) ? list : []
+})
+
+const targetSummary = computed(() => {
+  const n = detailTargets.value.length
+  return n ? `${n} 台服务器` : '—'
+})
+
+function showServerGroup(server) {
+  if (!server.groupName || !detailData.value) return false
+  return detailData.value.groupName === '全部分组' || detailData.value.groupName !== server.groupName
+}
+
 const detailSegments = computed(() => {
   if (!detailData.value || !detailData.value.detailLogs) return []
   const segments = []
@@ -190,12 +205,25 @@ onMounted(() => {
         </header>
         <div v-if="detailData" class="step-body">
           <dl class="kv">
-            <div><dt>ID</dt><dd class="font-mono">{{ detailData.id }}</dd></div>
-            <div><dt>任务</dt><dd>{{ detailData.taskName || (detailData.taskId ? '任务#' + detailData.taskId : '-') }}</dd></div>
-            <div><dt>版本</dt><dd class="font-mono">{{ detailData.version || '-' }}</dd></div>
-            <div><dt>开始</dt><dd>{{ detailData.startedAt ? new Date(detailData.startedAt).toLocaleString() : '-' }}</dd></div>
-            <div><dt>完成</dt><dd>{{ detailData.completedAt ? new Date(detailData.completedAt).toLocaleString() : '-' }}</dd></div>
+            <div><dt>分组</dt><dd>{{ detailData.groupName || '—' }}</dd></div>
+            <div><dt>任务</dt><dd>{{ detailData.taskName || (detailData.taskId ? '任务#' + detailData.taskId : '—') }}</dd></div>
+            <div><dt>目标</dt><dd>{{ targetSummary }}</dd></div>
+            <div><dt>版本</dt><dd class="font-mono">{{ detailData.version || '—' }}</dd></div>
+            <div v-if="detailData.jenkinsBuildNumber"><dt>构建号</dt><dd class="font-mono">#{{ String(detailData.jenkinsBuildNumber).replace(/^#/, '') }}</dd></div>
+            <div><dt>开始</dt><dd>{{ detailData.startedAt ? new Date(detailData.startedAt).toLocaleString() : '—' }}</dd></div>
+            <div><dt>完成</dt><dd>{{ detailData.completedAt ? new Date(detailData.completedAt).toLocaleString() : '—' }}</dd></div>
           </dl>
+          <h4>服务器</h4>
+          <ul v-if="detailTargets.length" class="target-list">
+            <li v-for="server in detailTargets" :key="server.id || server.name">
+              <span>{{ server.name || ('服务器#' + server.id) }}</span>
+              <span class="font-mono target-meta">
+                <template v-if="server.host">{{ server.host }}<template v-if="server.port">:{{ server.port }}</template></template>
+                <template v-if="showServerGroup(server)"> · {{ server.groupName }}</template>
+              </span>
+            </li>
+          </ul>
+          <p v-else class="empty-note">没有记录目标服务器</p>
           <p v-if="detailData.errorMessage" class="error-line">{{ detailData.errorMessage }}</p>
           <h4>概要</h4>
           <pre v-if="detailData.logs" class="log-block">{{ detailData.logs }}</pre>
@@ -292,6 +320,34 @@ onMounted(() => {
 
 .kv dd {
   margin: 0;
+  text-align: right;
+}
+
+.target-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+}
+
+.target-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.target-list li:last-child {
+  border-bottom: 0;
+}
+
+.target-meta {
+  color: var(--el-text-color-secondary);
   text-align: right;
 }
 

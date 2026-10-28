@@ -3,10 +3,12 @@ package com.redeploy.service;
 import com.redeploy.auth.AuthException;
 import com.redeploy.auth.AuthPrincipal;
 import com.redeploy.auth.CaptchaImage;
+import com.redeploy.model.ApiKey;
 import com.redeploy.model.AuthSession;
 import com.redeploy.model.LoginGuard;
 import com.redeploy.model.SysMenu;
 import com.redeploy.model.SysUser;
+import com.redeploy.repository.ApiKeyMapper;
 import com.redeploy.repository.RbacMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -33,11 +35,14 @@ public class AuthService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final RbacMapper rbacMapper;
+    private final ApiKeyMapper apiKeyMapper;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final String adminToken;
 
-    public AuthService(RbacMapper rbacMapper, @Value("${redeploy.admin-token}") String adminToken) {
+    public AuthService(RbacMapper rbacMapper, ApiKeyMapper apiKeyMapper,
+                       @Value("${redeploy.admin-token}") String adminToken) {
         this.rbacMapper = rbacMapper;
+        this.apiKeyMapper = apiKeyMapper;
         this.adminToken = adminToken;
     }
 
@@ -117,7 +122,7 @@ public class AuthService {
             return new AuthPrincipal(true, null, "admin", "管理员", "admin-token", Set.of());
         }
         AuthSession session = rbacMapper.findSession(token);
-        if (session == null) return null;
+        if (session == null) return resolveApiKey(token);
         if (session.getExpiresAt() == null || !session.getExpiresAt().isAfter(LocalDateTime.now())) {
             rbacMapper.deleteSession(token);
             return null;
@@ -133,9 +138,42 @@ public class AuthService {
         return principalOf(user, session.getLoginType());
     }
 
+    private AuthPrincipal resolveApiKey(String token) {
+        if (token == null || !token.startsWith("rdk_")) return null;
+        String hash = sha256(token);
+        ApiKey key = apiKeyMapper.findByHash(hash);
+        if (key == null || !constantEquals(hash, key.getTokenHash())) return null;
+        if (key.getEnabled() == null || key.getEnabled() == 0) return null;
+        if (key.getExpiresAt() != null && !key.getExpiresAt().isAfter(LocalDateTime.now())) return null;
+        LocalDateTime lastUsed = key.getLastUsedAt();
+        if (lastUsed == null || lastUsed.isBefore(LocalDateTime.now().minusMinutes(1))) {
+            try {
+                apiKeyMapper.touchLastUsed(key.getId());
+            } catch (Exception ignored) {
+                // 最近使用时间写失败不影响本次调用
+            }
+        }
+        String label = key.getName() == null || key.getName().isBlank() ? key.getKeyPrefix() : key.getName();
+        return new AuthPrincipal(false, null, key.getKeyPrefix(), label, "api-key", Set.of(), key.getId());
+    }
+
+    /** 按令牌找出密钥记录。停用或过期也返回，供调用日志使用。 */
+    public ApiKey findApiKeyRecord(String token) {
+        if (token == null || !token.startsWith("rdk_")) return null;
+        String hash = sha256(token);
+        ApiKey key = apiKeyMapper.findByHash(hash);
+        if (key == null || !constantEquals(hash, key.getTokenHash())) return null;
+        return key;
+    }
+
     public Map<String, Object> me(String bearerToken, AuthPrincipal principal) {
         Long expiresAt = null;
-        if (!constantEquals(bearerToken, adminToken)) {
+        if ("api-key".equals(principal.getLoginType())) {
+            ApiKey key = apiKeyMapper.findByHash(sha256(bearerToken));
+            if (key != null && key.getExpiresAt() != null) {
+                expiresAt = epoch(key.getExpiresAt());
+            }
+        } else if (!constantEquals(bearerToken, adminToken)) {
             AuthSession session = rbacMapper.findSession(bearerToken);
             if (session != null && session.getExpiresAt() != null) {
                 expiresAt = epoch(session.getExpiresAt());
@@ -284,6 +322,15 @@ public class AuthService {
             rbacMapper.insertGuard(guard);
         } else {
             rbacMapper.updateGuard(guard);
+        }
+    }
+
+    private static String sha256(String raw) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
         }
     }
 

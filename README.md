@@ -1,107 +1,99 @@
-# Re-Deploy - 自动化部署平台
+# Re-Deploy
 
-Re-Deploy 是一个轻量级的自动化部署中间件，用于解决 Jenkins 无法直接连接客户服务器的部署场景。
-
-## 架构
+Re-Deploy 是部署中间件：服务端编排任务，目标机上的代理执行命令并接收制品。Jenkins 或浏览器不直连客户服务器。
 
 ```
-┌──────────────┐         ┌──────────────┐         ┌──────────────┐
-│   Jenkins    │ ←────── │   服务端      │ ──────► │   代理端     │
-│   服务器      │  curl   │  (Java)      │  HTTP   │   (Go)       │
-└──────────────┘         └──────────────┘         └──────────────┘
-                              开发机器                  客户服务器
+Jenkins / 浏览器 / 智能体
+        │  HTTP :9006
+        ▼
+   服务端（Java + Web 界面）
+        │  HTTP :9009
+        ▼
+   代理端（Go，跑在目标 Linux 上）
 ```
 
-## 特性
+## 能做什么
 
-- Jenkins 构建完成后自动触发部署
-- 支持 100-200MB 大文件分块上传和断点续传
-- 支持多服务器并行部署
-- 支持复杂部署流程（多步骤任务编排）
-- Web 管理界面
-- 部署失败钉钉告警通知
+- 按分组管理服务器，多机并行部署，查看分段日志
+- 任务步骤编排，对接 Jenkins 制品
+- 大文件分块上传
+- 账号、角色、菜单权限
+- 给智能体签发可吊销的 API 密钥
+- 失败告警、从目标机拉取诊断文件、浏览器 SSH
+
+## 组成
+
+| 部分 | 技术 | 端口 |
+|---|---|---|
+| `server/` | Java 17、Spring Boot 3.2、MyBatis、MySQL 8 | 9006 |
+| `frontend/` | Vue 3、Element Plus、Vite，构建进服务端静态资源 | 开发时 3000 |
+| `agent/` | Go 1.21 | 9009 |
+
+版本号以 `server/pom.xml` 的 `<version>` 为准。MySQL 需单独准备，连不上时服务端不会启动。
 
 ## 快速开始
 
-> 生产部署建议直接看 [构建与部署指南](docs/guide/deployment.md)（Docker Compose 一键起）。以下为本地开发运行方式。
-
-### 1. 启动服务端
+生产环境用 Docker Compose，步骤和变量见 [构建与部署指南](docs/guide/deployment.md)。
 
 ```bash
-# Windows
-java -jar redeploy-server.jar
-
-# Linux
-java -jar redeploy-server.jar
+cp .env.example .env
+# 编辑 REDEPLOY_ADMIN_TOKEN，并准备好 MySQL
+docker compose up -d
 ```
 
-服务端将在 http://localhost:9006 启动
+本地开发：
 
-### 2. 安装代理端
+```bash
+# Windows：交叉编译代理、打包服务端
+./scripts/build.ps1
 
-在客户服务器上执行：
+# 服务端
+cd server
+mvn spring-boot:run
+
+# 前端热更新（接口代理到 localhost:9006）
+cd frontend
+npm run dev
+```
+
+在目标机安装代理：
 
 ```bash
 curl -fsSL http://YOUR_SERVER_IP:9006/api/agent/install.sh | bash -s -- \
   --server http://YOUR_SERVER_IP:9006
 ```
 
-安装完成后，从日志中获取 Agent Token：
+没有 sudo 时看 [便携模式部署](docs/guide/agent-rootless-deploy.md)。装好后到 Web 的「服务器管理」登记代理令牌。
+
+## 给智能体用的 Skill
+
+仓库自带 Cursor Skill：`.cursor/skills/redeploy/`。用 Cursor 打开本仓库时会自动加载。在别的项目里用，把这个目录复制到个人技能目录：
+
+```text
+~/.cursor/skills/redeploy/
+```
+
+Windows 上是 `%USERPROFILE%\.cursor\skills\redeploy\`。
+
+Skill 通过环境变量调用服务端，不要把密钥写进 Skill 或仓库：
 
 ```bash
-journalctl -u deploy-agent -n 50
+REDEPLOY_BASE_URL=http://127.0.0.1:9006
+REDEPLOY_API_KEY=rdk_...
 ```
 
-### 3. 配置服务器
+密钥在 Web「权限 → API 密钥」创建，明文只显示一次。它能查询业务数据、新增分组/服务器/任务，以及发起、取消部署并查看状态和日志。不能修改、删除，也不能操作系统设置、用户、角色、菜单和远程命令。允许的路径见 [`.cursor/skills/redeploy/reference.md`](.cursor/skills/redeploy/reference.md)。
 
-访问 http://YOUR_SERVER_IP:9006，在服务器管理页面添加客户服务器，填入 Agent Token。
-
-### 4. 创建部署任务
-
-在任务管理页面创建部署任务，定义部署步骤：
-
-```json
-[
-  {"name": "stop", "type": "shell", "command": "systemctl stop myapp", "timeout": 30},
-  {"name": "deploy", "type": "shell", "command": "cp /data/artifacts/app.jar /opt/myapp/", "timeout": 60},
-  {"name": "start", "type": "shell", "command": "systemctl start myapp", "timeout": 30},
-  {"name": "health", "type": "shell", "command": "curl -f http://localhost:8080/health", "timeout": 30}
-]
-```
-
-### 5. 触发部署
-
-通过 Jenkins 或 Web 界面触发部署：
-
-```bash
-curl -X POST http://YOUR_SERVER_IP:9006/api/deploy \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "taskId": 1,
-    "serverIds": [1, 2, 3],
-    "version": "v1.0.0"
-  }'
-```
-
-## 技术栈
-
-- **服务端**: Java 17, Spring Boot 3.x, SQLite
-- **代理端**: Go 1.21+
-- **前端**: Bootstrap 5, JavaScript
-
-## 端口
-
-- 服务端: 9006
-- 代理端: 9009
+调用时使用 `Authorization: Bearer <REDEPLOY_API_KEY>`。这和管理员令牌、网页登录会话是分开的。
 
 ## 文档
 
-- [构建与部署指南](docs/guide/deployment.md)
+- [构建与部署](docs/guide/deployment.md)
 - [快速开始](docs/guide/quick-start.md)
-- [安装部署](docs/guide/installation.md)
-- [配置说明](docs/guide/configuration.md)
-- [用户手册](docs/guide/user-guide.md)
+- [安装](docs/guide/installation.md)
+- [配置](docs/guide/configuration.md)
+- [通知](docs/guide/notification.md)
+- [远端下载](docs/guide/remote-file-download.md)
 - [服务端 API](docs/api/server-api.md)
 - [代理端 API](docs/api/agent-api.md)
 - [FAQ](docs/faq.md)

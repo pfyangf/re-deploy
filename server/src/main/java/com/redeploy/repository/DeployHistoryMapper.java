@@ -29,8 +29,8 @@ public interface DeployHistoryMapper {
     @Select("SELECT * FROM deploy_history WHERE id = #{id}")
     Optional<DeployHistory> findByIdWithDetail(Long id);
 
-    @Insert("INSERT INTO deploy_history (task_id, server_ids, version, status, started_at, completed_at, error_message, logs, created_at) " +
-            "VALUES (#{taskId}, #{serverIds}, #{version}, #{status}, #{startedAt}, #{completedAt}, #{errorMessage}, #{logs}, NOW())")
+    @Insert("INSERT INTO deploy_history (task_id, server_ids, version, status, started_at, completed_at, error_message, logs, request_params, created_at) " +
+            "VALUES (#{taskId}, #{serverIds}, #{version}, #{status}, #{startedAt}, #{completedAt}, #{errorMessage}, #{logs}, #{requestParams}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(DeployHistory history);
 

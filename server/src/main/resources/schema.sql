@@ -63,6 +63,7 @@ CREATE TABLE `deploy_history`  (
                                    `error_message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
                                    `logs` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
                                    `detail_logs` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+                                   `request_params` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
                                    `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
                                    PRIMARY KEY (`id`) USING BTREE,
                                    INDEX `task_id`(`task_id` ASC) USING BTREE,

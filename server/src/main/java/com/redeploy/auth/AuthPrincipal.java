@@ -11,15 +11,22 @@ public class AuthPrincipal {
     private final String displayName;
     private final String loginType;
     private final Set<String> menuPaths;
+    private final Long apiKeyId;
 
     public AuthPrincipal(boolean admin, Long userId, String username, String displayName,
                          String loginType, Set<String> menuPaths) {
+        this(admin, userId, username, displayName, loginType, menuPaths, null);
+    }
+
+    public AuthPrincipal(boolean admin, Long userId, String username, String displayName,
+                         String loginType, Set<String> menuPaths, Long apiKeyId) {
         this.admin = admin;
         this.userId = userId;
         this.username = username;
         this.displayName = displayName;
         this.loginType = loginType;
         this.menuPaths = menuPaths == null ? Set.of() : Set.copyOf(menuPaths);
+        this.apiKeyId = apiKeyId;
     }
 
     public boolean isAdmin() { return admin; }
@@ -27,6 +34,7 @@ public class AuthPrincipal {
     public String getUsername() { return username; }
     public String getDisplayName() { return displayName; }
     public String getLoginType() { return loginType; }
+    public Long getApiKeyId() { return apiKeyId; }
     public Set<String> getMenuPaths() { return Collections.unmodifiableSet(menuPaths); }
 
     public boolean allows(String requirement) {

@@ -1,9 +1,13 @@
 package com.redeploy.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.redeploy.model.DeployHistory;
+import com.redeploy.model.Group;
 import com.redeploy.model.Server;
 import com.redeploy.model.Task;
 import com.redeploy.repository.DeployHistoryMapper;
+import com.redeploy.repository.GroupMapper;
 import com.redeploy.repository.ServerMapper;
 import com.redeploy.repository.TaskMapper;
 import com.redeploy.service.DeployService;
@@ -14,11 +18,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RestController
@@ -35,7 +44,16 @@ public class DeployController {
     private TaskMapper taskMapper;
 
     @Autowired
+    private GroupMapper groupMapper;
+
+    @Autowired
     private DeployService deployService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final Pattern SERVER_ID_PATTERN = Pattern.compile("\\d+");
+    private static final Pattern BUILD_NUMBER_PATTERN = Pattern.compile("^#(\\d+)$");
 
     @Autowired
     private JenkinsService jenkinsService;
@@ -87,6 +105,7 @@ public class DeployController {
             }
         }
         history.setVersion(version);
+        history.setRequestParams(snapshotRequest(request, task, servers));
         // 先落 pending：部署在专用线程池中按系统设置的并发数执行，超出的任务排队等待
         history.setStatus("pending");
         history.setStartedAt(LocalDateTime.now());
@@ -111,7 +130,10 @@ public class DeployController {
     @GetMapping("/{id}/detail")
     public ResponseEntity<DeployHistory> getDeployDetail(@PathVariable Long id) {
         return deployHistoryMapper.findByIdWithDetail(id)
-                .map(ResponseEntity::ok)
+                .map(history -> {
+                    fillDeployContext(history);
+                    return ResponseEntity.ok(history);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -223,10 +245,167 @@ public class DeployController {
         }
     }
 
+    /**
+     * 记下部署当时选的分组、任务、构建号和目标服务器，供历史详情展示。
+     * 分组未传时记为「全部分组」。
+     */
+    private String snapshotRequest(DeployRequest request, Task task, List<Server> servers) {
+        Map<Long, String> groupNames = new LinkedHashMap<>();
+        Map<String, Object> snap = new LinkedHashMap<>();
+        Long groupId = request.getGroupId();
+        snap.put("groupId", groupId);
+        if (groupId == null) {
+            snap.put("groupName", "全部分组");
+        } else {
+            snap.put("groupName", groupName(groupId, groupNames));
+        }
+        snap.put("taskName", task.getName());
+        String buildNumber = null;
+        if (request.getParams() != null) {
+            String raw = request.getParams().get("jenkinsBuildNumber");
+            if (raw != null && !raw.isBlank()) {
+                buildNumber = raw.trim();
+            }
+        }
+        snap.put("jenkinsBuildNumber", buildNumber);
+        List<Map<String, Object>> targets = new ArrayList<>();
+        for (Server server : servers) {
+            Map<String, Object> target = new LinkedHashMap<>();
+            target.put("id", server.getId());
+            target.put("name", server.getName());
+            target.put("host", server.getHost());
+            target.put("port", server.getPort());
+            target.put("groupName", server.getGroupId() == null ? null : groupName(server.getGroupId(), groupNames));
+            targets.add(target);
+        }
+        snap.put("servers", targets);
+        try {
+            return objectMapper.writeValueAsString(snap);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String groupName(Long groupId, Map<Long, String> cache) {
+        if (cache.containsKey(groupId)) {
+            return cache.get(groupId);
+        }
+        String name = groupMapper.findById(groupId).map(Group::getName).orElse("分组#" + groupId);
+        cache.put(groupId, name);
+        return name;
+    }
+
+    /** 用快照填充详情；没有快照的旧记录按任务和服务器当前资料还原。 */
+    private void fillDeployContext(DeployHistory history) {
+        Task task = history.getTaskId() == null ? null : taskMapper.findById(history.getTaskId()).orElse(null);
+        if (task != null) {
+            history.setTaskName(task.getName());
+        }
+        applySnapshot(history);
+        if (history.getTargets() == null) {
+            history.setTargets(resolveTargets(history.getServerIds()));
+        }
+        if (history.getGroupName() == null || history.getGroupName().isBlank()) {
+            history.setGroupName(inferGroupName(history.getTargets(), task));
+        }
+        if (history.getJenkinsBuildNumber() == null || history.getJenkinsBuildNumber().isBlank()) {
+            history.setJenkinsBuildNumber(inferBuildNumber(history.getVersion()));
+        }
+    }
+
+    private void applySnapshot(DeployHistory history) {
+        if (history.getRequestParams() == null || history.getRequestParams().isBlank()) {
+            return;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(history.getRequestParams());
+            if (node.hasNonNull("groupName")) {
+                history.setGroupName(node.get("groupName").asText());
+            }
+            if (node.hasNonNull("jenkinsBuildNumber")) {
+                String build = node.get("jenkinsBuildNumber").asText();
+                if (!build.isBlank()) {
+                    history.setJenkinsBuildNumber(build);
+                }
+            }
+            if ((history.getTaskName() == null || history.getTaskName().isBlank()) && node.hasNonNull("taskName")) {
+                history.setTaskName(node.get("taskName").asText());
+            }
+            JsonNode servers = node.get("servers");
+            if (servers != null && servers.isArray()) {
+                List<DeployHistory.Target> targets = new ArrayList<>();
+                for (JsonNode item : servers) {
+                    DeployHistory.Target target = new DeployHistory.Target();
+                    if (item.hasNonNull("id")) target.setId(item.get("id").asLong());
+                    if (item.hasNonNull("name")) target.setName(item.get("name").asText());
+                    if (item.hasNonNull("host")) target.setHost(item.get("host").asText());
+                    if (item.hasNonNull("port")) target.setPort(item.get("port").asInt());
+                    if (item.hasNonNull("groupName")) target.setGroupName(item.get("groupName").asText());
+                    targets.add(target);
+                }
+                history.setTargets(targets);
+            }
+        } catch (Exception ignored) {
+            // 快照损坏时走下面的现查逻辑
+        }
+    }
+
+    private List<DeployHistory.Target> resolveTargets(String serverIds) {
+        List<DeployHistory.Target> targets = new ArrayList<>();
+        if (serverIds == null || serverIds.isBlank()) {
+            return targets;
+        }
+        Map<Long, String> groupNames = new LinkedHashMap<>();
+        Matcher matcher = SERVER_ID_PATTERN.matcher(serverIds);
+        while (matcher.find()) {
+            Long id = Long.valueOf(matcher.group());
+            DeployHistory.Target target = new DeployHistory.Target();
+            target.setId(id);
+            serverMapper.findById(id).ifPresentOrElse(server -> {
+                target.setName(server.getName());
+                target.setHost(server.getHost());
+                target.setPort(server.getPort());
+                if (server.getGroupId() != null) {
+                    target.setGroupName(groupName(server.getGroupId(), groupNames));
+                }
+            }, () -> target.setName("服务器#" + id));
+            targets.add(target);
+        }
+        return targets;
+    }
+
+    private String inferGroupName(List<DeployHistory.Target> targets, Task task) {
+        Set<String> names = new LinkedHashSet<>();
+        if (targets != null) {
+            for (DeployHistory.Target target : targets) {
+                if (target.getGroupName() != null && !target.getGroupName().isBlank()) {
+                    names.add(target.getGroupName());
+                }
+            }
+        }
+        if (names.size() == 1) {
+            return names.iterator().next();
+        }
+        if (names.size() > 1) {
+            return String.join("、", names);
+        }
+        if (task != null && task.getGroupId() != null) {
+            return groupMapper.findById(task.getGroupId()).map(Group::getName).orElse("分组#" + task.getGroupId());
+        }
+        return "—";
+    }
+
+    private String inferBuildNumber(String version) {
+        if (version == null) return null;
+        Matcher matcher = BUILD_NUMBER_PATTERN.matcher(version.trim());
+        return matcher.matches() ? matcher.group(1) : null;
+    }
+
     public static class DeployRequest {
         private Long taskId;
         private List<Long> serverIds;
         private String version;
+        private Long groupId;
         private Map<String, String> params;
 
         public Long getTaskId() { return taskId; }
@@ -235,6 +414,8 @@ public class DeployController {
         public void setServerIds(List<Long> serverIds) { this.serverIds = serverIds; }
         public String getVersion() { return version; }
         public void setVersion(String version) { this.version = version; }
+        public Long getGroupId() { return groupId; }
+        public void setGroupId(Long groupId) { this.groupId = groupId; }
         public Map<String, String> getParams() { return params; }
         public void setParams(Map<String, String> params) { this.params = params; }
     }

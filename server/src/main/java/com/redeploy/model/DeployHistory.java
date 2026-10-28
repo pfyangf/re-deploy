@@ -1,6 +1,9 @@
 package com.redeploy.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class DeployHistory {
 
@@ -14,10 +17,16 @@ public class DeployHistory {
     private String errorMessage;
     private String logs;
     private String detailLogs;
+    /** 部署时的分组、构建号、目标服务器快照（JSON），详情接口不直接下发。 */
+    @JsonIgnore
+    private String requestParams;
     private LocalDateTime createdAt;
 
-    // Transient: filled by controller from tasks table for UI display, not persisted
+    // 详情接口填充，不落库
     private String taskName;
+    private String groupName;
+    private String jenkinsBuildNumber;
+    private List<Target> targets;
 
     public DeployHistory() {}
 
@@ -54,6 +63,38 @@ public class DeployHistory {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
+    public String getRequestParams() { return requestParams; }
+    public void setRequestParams(String requestParams) { this.requestParams = requestParams; }
+
     public String getTaskName() { return taskName; }
     public void setTaskName(String taskName) { this.taskName = taskName; }
+
+    public String getGroupName() { return groupName; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
+
+    public String getJenkinsBuildNumber() { return jenkinsBuildNumber; }
+    public void setJenkinsBuildNumber(String jenkinsBuildNumber) { this.jenkinsBuildNumber = jenkinsBuildNumber; }
+
+    public List<Target> getTargets() { return targets; }
+    public void setTargets(List<Target> targets) { this.targets = targets; }
+
+    /** 部署当时选中的一台服务器。 */
+    public static class Target {
+        private Long id;
+        private String name;
+        private String host;
+        private Integer port;
+        private String groupName;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getHost() { return host; }
+        public void setHost(String host) { this.host = host; }
+        public Integer getPort() { return port; }
+        public void setPort(Integer port) { this.port = port; }
+        public String getGroupName() { return groupName; }
+        public void setGroupName(String groupName) { this.groupName = groupName; }
+    }
 }

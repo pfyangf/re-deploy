@@ -205,7 +205,8 @@ public class RbacService {
                 new Seed("settings", "nav.system", "menu", "系统设置", "/settings", "Setting", 51),
                 new Seed("access.users", "nav.access", "menu", "用户管理", "/access/users", "User", 61),
                 new Seed("access.roles", "nav.access", "menu", "角色管理", "/access/roles", "UserFilled", 62),
-                new Seed("access.menus", "nav.access", "menu", "菜单管理", "/access/menus", "Menu", 63)
+                new Seed("access.menus", "nav.access", "menu", "菜单管理", "/access/menus", "Menu", 63),
+                new Seed("access.api-keys", "nav.access", "menu", "API 密钥", "/access/api-keys", "Key", 64)
         };
         Map<String, Long> ids = new LinkedHashMap<>();
         for (SysMenu existing : rbacMapper.findMenus()) {
