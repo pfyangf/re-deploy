@@ -40,8 +40,10 @@ public class ApiKeyController {
 
     @GetMapping("/stats")
     public Map<String, Object> stats(@RequestParam(defaultValue = "day") String unit,
-                                     @RequestParam(defaultValue = "7") int span) {
-        return apiKeyCallService.stats(unit, span);
+                                     @RequestParam(defaultValue = "7") int span,
+                                     @RequestParam(defaultValue = "1") int page,
+                                     @RequestParam(defaultValue = "10") int size) {
+        return apiKeyCallService.stats(unit, span, page, size);
     }
 
     @PostMapping

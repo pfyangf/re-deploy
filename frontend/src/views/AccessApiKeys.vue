@@ -14,8 +14,12 @@ const keyword = ref('')
 const form = ref(emptyForm())
 const created = ref(null)
 const statsLoading = ref(false)
+const recentLoading = ref(false)
 const unit = ref('day')
 const span = ref(7)
+const recentPage = ref(1)
+const recentSize = ref(10)
+const recentTotal = ref(0)
 const stats = ref(emptyStats())
 
 const spanOptions = computed(() => unit.value === 'hour'
@@ -55,15 +59,44 @@ function formatTime(value) {
   return value || '—'
 }
 
-async function loadStats() {
-  statsLoading.value = true
+async function loadStats(recentOnly = false) {
+  if (recentOnly) recentLoading.value = true
+  else statsLoading.value = true
   try {
-    stats.value = (await api.getApiKeyStats({ unit: unit.value, span: span.value })) || emptyStats()
+    const data = (await api.getApiKeyStats({
+      unit: unit.value,
+      span: span.value,
+      page: recentPage.value,
+      size: recentSize.value
+    })) || emptyStats()
+    const recent = data.recent || []
+    if (data.recentTotal == null) {
+      recentTotal.value = recent.length
+      const start = (recentPage.value - 1) * recentSize.value
+      data.recent = recent.slice(start, start + recentSize.value)
+    } else {
+      recentTotal.value = Number(data.recentTotal)
+      if (data.recentPage) recentPage.value = Number(data.recentPage)
+    }
+    if (recentOnly) stats.value.recent = data.recent
+    else stats.value = data
   } catch (error) {
     ElMessage.error(error?.response?.data?.error || '加载调用统计失败')
   } finally {
     statsLoading.value = false
+    recentLoading.value = false
   }
+}
+
+function changeRecentPage(page) {
+  recentPage.value = page
+  loadStats(true)
+}
+
+function changeRecentSize(size) {
+  recentSize.value = size
+  recentPage.value = 1
+  loadStats(true)
 }
 
 function changeUnit(next) {
@@ -307,9 +340,9 @@ loadStats()
       <article class="chart-card">
         <header>
           <h3>最近调用</h3>
-          <span>{{ stats.recent.length }} 条</span>
+          <span>共 {{ recentTotal }} 条</span>
         </header>
-        <el-table :data="stats.recent" empty-text="还没有调用记录">
+        <el-table v-loading="recentLoading" :data="stats.recent" empty-text="还没有调用记录">
           <el-table-column prop="createdAt" label="时间" min-width="170" />
           <el-table-column prop="username" label="用户" min-width="120" />
           <el-table-column prop="keyName" label="密钥" min-width="120" />
@@ -323,6 +356,17 @@ loadStats()
             </template>
           </el-table-column>
         </el-table>
+        <div v-if="recentTotal > 0" class="recent-foot">
+          <el-pagination
+            :total="recentTotal"
+            :page-size="recentSize"
+            :current-page="recentPage"
+            :page-sizes="[10, 20, 40]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="changeRecentPage"
+            @size-change="changeRecentSize"
+          />
+        </div>
       </article>
     </section>
 
@@ -640,6 +684,14 @@ loadStats()
 .status-pill.is-bad {
   color: #8a3d36;
   background: rgba(196, 92, 82, 0.16);
+}
+
+.recent-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 @media (max-width: 1100px) {

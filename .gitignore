@@ -11,7 +11,7 @@
 .claude/
 .opencode/
 .workbuddy
-
+.codegraph
 
 # Build artifacts
 server/target/

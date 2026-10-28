@@ -54,7 +54,7 @@ public class ApiKeyCallService {
         }
     }
 
-    public Map<String, Object> stats(String unit, int span) {
+    public Map<String, Object> stats(String unit, int span, int page, int size) {
         boolean hourly = "hour".equalsIgnoreCase(unit);
         int safeSpan = hourly ? clamp(span, 1, 168) : clamp(span, 1, 30);
         LocalDateTime since = hourly
@@ -72,7 +72,15 @@ public class ApiKeyCallService {
         body.put("byKey", rows(callMapper.countByKey(since)));
         body.put("byFeature", rows(callMapper.countByFeature(since)));
         body.put("timeline", timeline(since, hourly, safeSpan));
-        body.put("recent", callMapper.recent().stream().map(this::recentView).toList());
+        int safeSize = clamp(size, 1, 100);
+        long recentTotal = callMapper.countAll();
+        int safePage = Math.max(page, 1);
+        int maxPage = recentTotal == 0 ? 1 : (int) ((recentTotal - 1) / safeSize) + 1;
+        if (safePage > maxPage) safePage = maxPage;
+        body.put("recentTotal", recentTotal);
+        body.put("recentPage", safePage);
+        body.put("recentSize", safeSize);
+        body.put("recent", callMapper.recentPage((safePage - 1) * safeSize, safeSize).stream().map(this::recentView).toList());
         return body;
     }
 

@@ -40,9 +40,12 @@ public interface ApiKeyCallMapper {
             "WHERE created_at >= #{since} GROUP BY label ORDER BY label")
     List<Map<String, Object>> countByTime(@Param("since") LocalDateTime since, @Param("pattern") String pattern);
 
+    @Select("SELECT COUNT(*) FROM api_key_call")
+    long countAll();
+
     @Select("SELECT id, api_key_id, user_id, username, key_name, method, path, feature, status_code, created_at " +
-            "FROM api_key_call ORDER BY id DESC LIMIT 40")
-    List<ApiKeyCall> recent();
+            "FROM api_key_call ORDER BY id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<ApiKeyCall> recentPage(@Param("offset") int offset, @Param("limit") int limit);
 
     @Delete("DELETE FROM api_key_call WHERE created_at < #{before}")
     int deleteBefore(@Param("before") LocalDateTime before);
