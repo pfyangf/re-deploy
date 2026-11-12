@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -92,7 +94,7 @@ public class OssArtifactService {
         }
         OssCredential credential = ossCredentialMapper.findById(task.getOssCredentialId())
                 .orElseThrow(() -> new RuntimeException("OSS 凭证不存在"));
-        String secret = decryptSecret(credential);
+        String secret = resolveSecret(credential);
         String bucket = task.getOssBucket().trim();
         String objectKey = task.getOssObjectKey().trim();
         String filename = OssLocations.fileName(objectKey);
@@ -162,13 +164,58 @@ public class OssArtifactService {
         return false;
     }
 
-    private String decryptSecret(OssCredential credential) {
-        try {
-            return sshEncryptionUtils.decrypt(credential.getAccessKeySecret());
-        } catch (RuntimeException e) {
-            log.error("Failed to decrypt OSS credential {}", credential.getId());
-            throw new RuntimeException("OSS 凭证无法解密，请重新保存 AccessKey Secret");
+    /**
+     * 数据库里的 Secret 所有实例直接共用，不再用每台机器自己的 SSH 加密密钥。
+     * 旧数据如果还能用本机密钥解开，就改写成明文，避免别人启动后无法解密。
+     */
+    public String resolveSecret(OssCredential credential) {
+        String stored = credential.getAccessKeySecret();
+        if (stored == null || stored.isBlank()) {
+            throw new IllegalArgumentException("请填写 AccessKey Secret");
         }
+        String plain = unwrapLegacyCipher(stored);
+        if (!plain.equals(stored) && credential.getId() != null) {
+            credential.setAccessKeySecret(plain);
+            ossCredentialMapper.update(credential);
+            log.info("OSS credential {} rewritten as shared secret", credential.getId());
+        }
+        return plain;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void rewriteLegacySecrets() {
+        try {
+            for (OssCredential credential : ossCredentialMapper.findAll()) {
+                resolveSecret(credential);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to rewrite legacy OSS secrets: {}", e.getMessage());
+        }
+    }
+
+    private String unwrapLegacyCipher(String stored) {
+        if (stored.length() < 44) {
+            return stored;
+        }
+        try {
+            String plain = sshEncryptionUtils.decrypt(stored);
+            if (plain == null || plain.isBlank() || plain.length() >= stored.length() || !isPrintableSecret(plain)) {
+                return stored;
+            }
+            return plain;
+        } catch (RuntimeException e) {
+            return stored;
+        }
+    }
+
+    private static boolean isPrintableSecret(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 33 || c > 126) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String ossError(OSSException e) {

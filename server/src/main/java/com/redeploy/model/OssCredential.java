@@ -3,7 +3,7 @@ package com.redeploy.model;
 import java.time.LocalDateTime;
 
 /**
- * 可复用的阿里云 OSS 凭证。AccessKey Secret 只以密文落库，接口不回传明文。
+ * 可复用的阿里云 OSS 凭证。Secret 存在数据库里，各实例共用；接口不回传明文。
  */
 public class OssCredential {
 

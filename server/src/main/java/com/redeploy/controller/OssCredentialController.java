@@ -5,7 +5,6 @@ import com.redeploy.repository.OssCredentialMapper;
 import com.redeploy.repository.TaskMapper;
 import com.redeploy.service.OssArtifactService;
 import com.redeploy.service.OssLocations;
-import com.redeploy.util.SshEncryptionUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,16 +18,13 @@ public class OssCredentialController {
 
     private final OssCredentialMapper credentialMapper;
     private final TaskMapper taskMapper;
-    private final SshEncryptionUtils encryptionUtils;
     private final OssArtifactService ossArtifactService;
 
     public OssCredentialController(OssCredentialMapper credentialMapper,
                                    TaskMapper taskMapper,
-                                   SshEncryptionUtils encryptionUtils,
                                    OssArtifactService ossArtifactService) {
         this.credentialMapper = credentialMapper;
         this.taskMapper = taskMapper;
-        this.encryptionUtils = encryptionUtils;
         this.ossArtifactService = ossArtifactService;
     }
 
@@ -58,11 +54,7 @@ public class OssCredentialController {
                 if (stored == null) {
                     return badRequest("OSS 凭证不存在");
                 }
-                try {
-                    secret = encryptionUtils.decrypt(stored.getAccessKeySecret());
-                } catch (RuntimeException e) {
-                    return badRequest("OSS 凭证无法解密，请重新填写 AccessKey Secret");
-                }
+                secret = ossArtifactService.resolveSecret(stored);
                 if (credential.getEndpoint() == null || credential.getEndpoint().isBlank()) {
                     credential.setEndpoint(stored.getEndpoint());
                 }
@@ -86,7 +78,6 @@ public class OssCredentialController {
             return badRequest(e.getMessage());
         }
         credential.setId(null);
-        credential.setAccessKeySecret(encryptionUtils.encrypt(credential.getAccessKeySecret()));
         credentialMapper.insert(credential);
         stripSecret(credential);
         return ResponseEntity.ok(credential);
@@ -107,7 +98,7 @@ public class OssCredentialController {
         existing.setEndpoint(credential.getEndpoint());
         existing.setAccessKeyId(credential.getAccessKeyId());
         if (credential.getAccessKeySecret() != null && !credential.getAccessKeySecret().isBlank()) {
-            existing.setAccessKeySecret(encryptionUtils.encrypt(credential.getAccessKeySecret()));
+            existing.setAccessKeySecret(credential.getAccessKeySecret());
         }
         credentialMapper.update(existing);
         stripSecret(existing);

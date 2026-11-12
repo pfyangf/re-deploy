@@ -181,7 +181,7 @@ onMounted(loadCredentials)
       <template #header>
         <div>
           <h2 class="od-dialog-title">{{ form.id ? '编辑 OSS 凭证' : '新增 OSS 凭证' }}</h2>
-          <p class="od-dialog-sub">同一地域共用一套 AccessKey。Secret 只保存在服务端</p>
+          <p class="od-dialog-sub">同一地域共用一套 AccessKey。Secret 存在服务端，所有实例共用</p>
         </div>
       </template>
       <el-form class="od-form" :model="form" label-position="top">
@@ -205,7 +205,7 @@ onMounted(loadCredentials)
         </el-form-item>
       </el-form>
       <template #footer>
-        <span class="od-dialog-note">Secret 加密后保存，接口不再回传</span>
+        <span class="od-dialog-note">Secret 不会回传到页面</span>
         <div class="od-dialog-actions">
           <el-button :loading="testing" @click="handleTest">验证</el-button>
           <el-button @click="dialogVisible = false">取消</el-button>
