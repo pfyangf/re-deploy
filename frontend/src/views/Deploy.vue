@@ -35,9 +35,20 @@ const selectedTask = computed(() => {
 })
 
 // Check if selected task has Jenkins enabled
-const showJenkinsBuildNumber = computed(() => {
-  return selectedTask.value && selectedTask.value.jenkinsEnabled
-})
+const showJenkinsBuildNumber = computed(() => artifactSourceOf(selectedTask.value) === 'jenkins')
+
+function artifactSourceOf(task) {
+  if (!task) return 'none'
+  if (task.artifactSource) return task.artifactSource
+  return task.jenkinsEnabled ? 'jenkins' : 'none'
+}
+
+function artifactHint(task) {
+  const source = artifactSourceOf(task)
+  if (source === 'jenkins') return '需要 Jenkins 构建号'
+  if (source === 'oss') return '部署前从阿里云 OSS 下载'
+  return '直接执行任务脚本'
+}
 
 const isAllGroups = computed(() => selectedGroupId.value === null)
 
@@ -372,7 +383,7 @@ function clearSelectedServers() {
                 <input v-model="form.taskId" type="radio" name="deploy-task" :value="task.id">
                 <span>
                   <span class="choice-name">{{ task.name }}</span>
-                  <span class="choice-meta">{{ task.jenkinsEnabled ? '需要 Jenkins 构建号' : '直接执行任务脚本' }}</span>
+                  <span class="choice-meta">{{ artifactHint(task) }}</span>
                 </span>
               </label>
             </div>

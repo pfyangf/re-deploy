@@ -197,6 +197,7 @@ public class RbacService {
                 new Seed("groups", "nav.resource", "menu", "分组管理", "/groups", "Folder", 21),
                 new Seed("servers", "nav.resource", "menu", "服务器管理", "/servers", "Monitor", 22),
                 new Seed("tasks", "nav.resource", "menu", "任务管理", "/tasks", "List", 23),
+                new Seed("oss-credentials", "nav.resource", "menu", "OSS 凭证", "/oss-credentials", "Coin", 24),
                 new Seed("deploy", "nav.deploy", "menu", "部署操作", "/deploy", "Promotion", 31),
                 new Seed("history", "nav.deploy", "menu", "部署历史", "/history", "Clock", 32),
                 new Seed("artifacts", "nav.deploy", "menu", "构建产物", "/artifacts", "Files", 33),

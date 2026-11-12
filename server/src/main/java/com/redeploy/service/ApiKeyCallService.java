@@ -143,6 +143,7 @@ public class ApiKeyCallService {
         if (path.startsWith("/api/groups")) return "分组";
         if (path.startsWith("/api/servers")) return "服务器";
         if (path.startsWith("/api/tasks")) return "任务";
+        if (path.startsWith("/api/oss-credentials")) return "OSS 凭证";
         if (path.startsWith("/api/artifacts")) return "制品";
         if (path.startsWith("/api/deploy")) return "部署";
         if (path.startsWith("/api/notification")) return "通知";

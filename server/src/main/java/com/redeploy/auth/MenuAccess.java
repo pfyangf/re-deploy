@@ -28,6 +28,11 @@ public final class MenuAccess {
         }
         if (uri.startsWith("/api/tasks")) return "/tasks";
 
+        if ("GET".equals(method) && (uri.equals("/api/oss-credentials") || uri.matches("/api/oss-credentials/\\d+"))) {
+            return "ANY:/oss-credentials,/tasks";
+        }
+        if (uri.startsWith("/api/oss-credentials")) return "/oss-credentials";
+
         if (uri.startsWith("/api/settings")) return "/settings";
         if (uri.startsWith("/api/notification")) return "/notifications";
         if ("GET".equals(method) && uri.startsWith("/api/artifacts")) return "ANY:/artifacts,/deploy";
@@ -46,6 +51,9 @@ public final class MenuAccess {
 
         if ("GET".equals(method) && (uri.equals("/api/deploy/history")
                 || uri.matches("/api/deploy/\\d+/(detail|status)"))) {
+            return "ANY:/dashboard,/history,/deploy";
+        }
+        if ("POST".equals(method) && "/api/deploy/cancel-active".equals(uri)) {
             return "ANY:/dashboard,/history,/deploy";
         }
         if (uri.startsWith("/api/deploy")) return "/deploy";

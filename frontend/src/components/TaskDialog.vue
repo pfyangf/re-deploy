@@ -23,15 +23,20 @@ const form = ref({
   beforeCommand: '',
   afterCommand: '',
   description: '',
+  artifactSource: 'none',
   jenkinsEnabled: false,
   jenkinsUrl: '',
   jenkinsJobName: '',
   jenkinsArtifactPath: '',
   jenkinsUser: '',
-  jenkinsToken: ''
+  jenkinsToken: '',
+  ossCredentialId: '',
+  ossBucket: '',
+  ossObjectKey: ''
 })
 
 const loading = ref(false)
+const ossCredentials = ref([])
 
 // 前置/后置命令支持的模板变量（与 DeployService.buildServerParams 注入项保持一致）
 const templateVariables = [
@@ -44,13 +49,49 @@ const templateVariables = [
   { name: '{{server.name}}', desc: '目标服务器名称，按每台目标分别取值', example: '录像合成服务器-dat' },
   { name: '{{server.host}}', desc: '目标服务器 IP/主机名，按每台目标分别取值', example: '10.28.3.44' },
   { name: '{{jenkinsBuildNumber}}', desc: 'Jenkins 构建号，部署时填写', example: '123' },
-  { name: '{{artifactFilename}}', desc: '制品文件名，Jenkins 任务自动注入', example: 'gateway-api.jar' }
+  { name: '{{artifactFilename}}', desc: '制品文件名，Jenkins 或 OSS 下载后自动注入', example: 'gateway-api.jar' }
 ]
+
+function artifactSourceOf(task) {
+  if (task?.artifactSource) return task.artifactSource
+  return task?.jenkinsEnabled ? 'jenkins' : 'none'
+}
+
+function blankForm() {
+  return {
+    name: '',
+    groupId: props.groups[0]?.id || '',
+    taskType: 'deploy',
+    deployPath: '/opt/application',
+    beforeCommand: '',
+    afterCommand: '',
+    description: '',
+    artifactSource: 'none',
+    jenkinsEnabled: false,
+    jenkinsUrl: '',
+    jenkinsJobName: '',
+    jenkinsArtifactPath: '',
+    jenkinsUser: '',
+    jenkinsToken: '',
+    ossCredentialId: '',
+    ossBucket: '',
+    ossObjectKey: ''
+  }
+}
+
+async function loadOssCredentials() {
+  try {
+    ossCredentials.value = await api.getOssCredentials() || []
+  } catch (error) {
+    ossCredentials.value = []
+    console.error(error)
+  }
+}
 
 watch(() => props.modelValue, (visible) => {
   if (visible) {
+    loadOssCredentials()
     if (props.task) {
-      // Edit / Copy mode - fill with existing data
       form.value = {
         name: isCopy.value ? `${props.task.name || ''} 副本` : (props.task.name || ''),
         groupId: props.task.groupId?.toString() || '',
@@ -59,30 +100,19 @@ watch(() => props.modelValue, (visible) => {
         beforeCommand: props.task.beforeCommand || '',
         afterCommand: props.task.afterCommand || '',
         description: props.task.description || '',
+        artifactSource: artifactSourceOf(props.task),
         jenkinsEnabled: props.task.jenkinsEnabled || false,
         jenkinsUrl: props.task.jenkinsUrl || '',
         jenkinsJobName: props.task.jenkinsJobName || '',
         jenkinsArtifactPath: props.task.jenkinsArtifactPath || '',
         jenkinsUser: props.task.jenkinsUser || '',
-        jenkinsToken: props.task.jenkinsToken || ''
+        jenkinsToken: props.task.jenkinsToken || '',
+        ossCredentialId: props.task.ossCredentialId || '',
+        ossBucket: props.task.ossBucket || '',
+        ossObjectKey: props.task.ossObjectKey || ''
       }
     } else {
-      // Create mode - reset to defaults
-      form.value = {
-        name: '',
-        groupId: props.groups[0]?.id || '',
-        taskType: 'deploy',
-        deployPath: '/opt/application',
-        beforeCommand: '',
-        afterCommand: '',
-        description: '',
-        jenkinsEnabled: false,
-        jenkinsUrl: '',
-        jenkinsJobName: '',
-        jenkinsArtifactPath: '',
-        jenkinsUser: '',
-        jenkinsToken: ''
-      }
+      form.value = blankForm()
     }
   }
 })
@@ -96,12 +126,23 @@ async function handleSubmit() {
     ElMessage.warning('请填写必填字段')
     return
   }
+  if (form.value.artifactSource === 'oss') {
+    if (!form.value.ossCredentialId || !form.value.ossBucket || !form.value.ossObjectKey) {
+      ElMessage.warning('请完整填写 OSS 凭证、Bucket 和对象路径')
+      return
+    }
+  }
 
   loading.value = true
   try {
     const data = {
       ...form.value,
-      groupId: parseInt(form.value.groupId)
+      groupId: parseInt(form.value.groupId),
+      artifactSource: form.value.artifactSource,
+      jenkinsEnabled: form.value.artifactSource === 'jenkins',
+      ossCredentialId: form.value.artifactSource === 'oss' ? parseInt(form.value.ossCredentialId) : null,
+      ossBucket: form.value.artifactSource === 'oss' ? form.value.ossBucket : null,
+      ossObjectKey: form.value.artifactSource === 'oss' ? form.value.ossObjectKey : null
     }
     if (isEdit.value) {
       // Edit mode
@@ -115,7 +156,7 @@ async function handleSubmit() {
     emit('success')
     handleClose()
   } catch (error) {
-    ElMessage.error(isEdit.value ? '更新失败' : (isCopy.value ? '复制失败' : '创建失败'))
+    ElMessage.error(error?.response?.data?.error || (isEdit.value ? '更新失败' : (isCopy.value ? '复制失败' : '创建失败')))
     console.error(error)
   } finally {
     loading.value = false
@@ -192,33 +233,53 @@ const submitButtonText = computed(() => {
       </el-collapse>
       <div class="od-jenkins">
         <div class="od-jenkins-head">
-          <el-switch v-model="form.jenkinsEnabled" />
-          <span>Jenkins 集成</span>
-          <span class="page-note">{{ form.jenkinsEnabled ? '已启用' : '未启用' }}</span>
+          <span>构建物来源</span>
         </div>
-        <div v-if="form.jenkinsEnabled" class="od-jenkins-body">
-          <el-form-item label="Jenkins 地址">
-            <el-input v-model="form.jenkinsUrl" class="font-mono" placeholder="https://jenkins.internal" />
-          </el-form-item>
-          <el-form-item label="Job 名称">
-            <el-input v-model="form.jenkinsJobName" class="font-mono" placeholder="group/job-name" />
-          </el-form-item>
-          <el-form-item label="构件路径">
-            <el-input v-model="form.jenkinsArtifactPath" class="font-mono" placeholder="target/app.war" />
-          </el-form-item>
-          <div class="od-field-row">
-            <el-form-item label="用户名">
-              <el-input v-model="form.jenkinsUser" placeholder="jenkins-bot" />
+        <div class="od-jenkins-body">
+          <el-radio-group v-model="form.artifactSource">
+            <el-radio value="none">不下载</el-radio>
+            <el-radio value="jenkins">Jenkins</el-radio>
+            <el-radio value="oss">阿里云 OSS</el-radio>
+          </el-radio-group>
+          <template v-if="form.artifactSource === 'jenkins'">
+            <el-form-item label="Jenkins 地址">
+              <el-input v-model="form.jenkinsUrl" class="font-mono" placeholder="https://jenkins.internal" />
             </el-form-item>
-            <el-form-item label="API Token" style="margin-bottom: 0">
-              <el-input v-model="form.jenkinsToken" type="password" show-password placeholder="下载权限令牌" />
+            <el-form-item label="Job 名称">
+              <el-input v-model="form.jenkinsJobName" class="font-mono" placeholder="group/job-name" />
             </el-form-item>
-          </div>
+            <el-form-item label="构件路径">
+              <el-input v-model="form.jenkinsArtifactPath" class="font-mono" placeholder="target/app.war" />
+            </el-form-item>
+            <div class="od-field-row">
+              <el-form-item label="用户名">
+                <el-input v-model="form.jenkinsUser" placeholder="jenkins-bot" />
+              </el-form-item>
+              <el-form-item label="API Token" style="margin-bottom: 0">
+                <el-input v-model="form.jenkinsToken" type="password" show-password placeholder="下载权限令牌" />
+              </el-form-item>
+            </div>
+          </template>
+          <template v-else-if="form.artifactSource === 'oss'">
+            <el-form-item label="OSS 凭证" required>
+              <el-select v-model="form.ossCredentialId" placeholder="选择已保存的凭证" style="width: 100%">
+                <el-option v-for="item in ossCredentials" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+            <p v-if="!ossCredentials.length" class="page-note">还没有凭证。请先到「OSS 凭证」页面创建。</p>
+            <el-form-item label="Bucket" required>
+              <el-input v-model="form.ossBucket" class="font-mono" placeholder="my-bucket" />
+            </el-form-item>
+            <el-form-item label="对象路径" required style="margin-bottom: 0">
+              <el-input v-model="form.ossObjectKey" class="font-mono" placeholder="release/app.jar" />
+            </el-form-item>
+            <p class="page-note">每次部署都重新下载这个固定对象。Jenkins 侧用 ossutil 覆盖上传即可。</p>
+          </template>
         </div>
       </div>
     </el-form>
     <template #footer>
-      <span class="od-dialog-note">Jenkins 令牌只保存在服务端</span>
+      <span class="od-dialog-note">凭证和令牌只保存在服务端</span>
       <div class="od-dialog-actions">
         <el-button @click="handleClose">取消</el-button>
         <el-button type="primary" :loading="loading" @click="handleSubmit">{{ submitButtonText }}</el-button>
@@ -236,5 +297,8 @@ const submitButtonText = computed(() => {
   font-family: var(--el-font-family-mono);
   font-size: 12px;
   color: var(--el-color-primary);
+}
+.od-jenkins-body .el-radio-group {
+  margin-bottom: 12px;
 }
 </style>

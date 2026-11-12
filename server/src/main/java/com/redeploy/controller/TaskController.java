@@ -5,11 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.redeploy.model.Group;
 import com.redeploy.model.Task;
 import com.redeploy.repository.GroupMapper;
+import com.redeploy.repository.OssCredentialMapper;
 import com.redeploy.repository.TaskMapper;
+import com.redeploy.service.TaskArtifactPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +25,9 @@ public class TaskController {
 
     @Autowired
     private GroupMapper groupMapper;
+
+    @Autowired
+    private OssCredentialMapper ossCredentialMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -41,7 +47,12 @@ public class TaskController {
     }
 
     @PostMapping
-    public Task createTask(@RequestBody Task task) {
+    public ResponseEntity<?> createTask(@RequestBody Task task) {
+        try {
+            TaskArtifactPolicy.apply(task, this::ossCredentialExists);
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
         // Assign to default group if not specified
         if (task.getGroupId() == null) {
             Group defaultGroup = groupMapper.findByName("default").orElse(null);
@@ -98,11 +109,16 @@ public class TaskController {
         }
         
         taskMapper.insert(task);
-        return task;
+        return ResponseEntity.ok(task);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Task> updateTask(@PathVariable Long id, @RequestBody Task task) {
+    public ResponseEntity<?> updateTask(@PathVariable Long id, @RequestBody Task task) {
+        try {
+            TaskArtifactPolicy.apply(task, this::ossCredentialExists);
+        } catch (IllegalArgumentException e) {
+            return badRequest(e.getMessage());
+        }
         return taskMapper.findById(id)
                 .map(existing -> {
                     existing.setName(task.getName());
@@ -119,7 +135,11 @@ public class TaskController {
                     existing.setJenkinsArtifactPath(task.getJenkinsArtifactPath());
                     existing.setJenkinsUser(task.getJenkinsUser());
                     existing.setJenkinsToken(task.getJenkinsToken());
-                    
+                    existing.setArtifactSource(task.getArtifactSource());
+                    existing.setOssCredentialId(task.getOssCredentialId());
+                    existing.setOssBucket(task.getOssBucket());
+                    existing.setOssObjectKey(task.getOssObjectKey());
+
                     // Rebuild steps definition if needed
                     if ("deploy".equals(task.getTaskType()) && task.getStepsDefinition() == null) {
                         List<Map<String, Object>> steps = new ArrayList<>();
@@ -180,5 +200,15 @@ public class TaskController {
             return ResponseEntity.ok().build();
         }
         return ResponseEntity.notFound().build();
+    }
+
+    private boolean ossCredentialExists(Long id) {
+        return id != null && ossCredentialMapper.countById(id) > 0;
+    }
+
+    private static ResponseEntity<Map<String, String>> badRequest(String message) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", message);
+        return ResponseEntity.badRequest().body(error);
     }
 }

@@ -22,6 +22,7 @@ public final class ApiKeyAccess {
             return path.startsWith("/api/groups")
                     || path.startsWith("/api/servers")
                     || path.startsWith("/api/tasks")
+                    || path.startsWith("/api/oss-credentials")
                     || path.startsWith("/api/artifacts")
                     || path.startsWith("/api/deploy")
                     || path.startsWith("/api/notification")
@@ -29,11 +30,14 @@ public final class ApiKeyAccess {
                     || path.startsWith("/api/agents");
         }
         if (!"POST".equals(method)) return false;
-        if ("/api/groups".equals(path) || "/api/servers".equals(path) || "/api/tasks".equals(path)) return true;
+        if ("/api/groups".equals(path) || "/api/servers".equals(path) || "/api/tasks".equals(path)
+                || "/api/oss-credentials".equals(path)) return true;
         if ("/api/notification/configs".equals(path)) return true;
         if ("/api/deploy".equals(path)) return true;
         return path.matches("/api/servers/\\d+/test")
                 || path.matches("/api/servers/\\d+/download")
-                || path.matches("/api/deploy/\\d+/cancel");
+                || path.matches("/api/deploy/\\d+/cancel")
+                || "/api/deploy/cancel-active".equals(path)
+                || "/api/oss-credentials/test".equals(path);
     }
 }

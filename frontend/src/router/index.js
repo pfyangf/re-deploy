@@ -3,6 +3,7 @@ import Dashboard from '../views/Dashboard.vue'
 import Groups from '../views/Groups.vue'
 import Servers from '../views/Servers.vue'
 import Tasks from '../views/Tasks.vue'
+import OssCredentials from '../views/OssCredentials.vue'
 import Deploy from '../views/Deploy.vue'
 import History from '../views/History.vue'
 import Artifacts from '../views/Artifacts.vue'
@@ -52,6 +53,12 @@ const routes = [
     name: 'tasks',
     component: Tasks,
     meta: { title: '任务管理', subtitle: '可复用的部署步骤与参数', menu: '/tasks' }
+  },
+  {
+    path: '/oss-credentials',
+    name: 'oss-credentials',
+    component: OssCredentials,
+    meta: { title: 'OSS 凭证', subtitle: '阿里云 OSS 的可复用访问凭证', menu: '/oss-credentials' }
   },
   {
     path: '/deploy',

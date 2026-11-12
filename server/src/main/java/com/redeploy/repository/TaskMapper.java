@@ -18,9 +18,11 @@ public interface TaskMapper {
     List<Task> findByGroupId(Long groupId);
 
     @Insert("INSERT INTO tasks (name, description, task_type, group_id, deploy_path, before_command, after_command, steps_definition, " +
-            "jenkins_enabled, jenkins_url, jenkins_job_name, jenkins_artifact_path, jenkins_user, jenkins_token, created_at, updated_at) " +
+            "jenkins_enabled, jenkins_url, jenkins_job_name, jenkins_artifact_path, jenkins_user, jenkins_token, " +
+            "artifact_source, oss_credential_id, oss_bucket, oss_object_key, created_at, updated_at) " +
             "VALUES (#{name}, #{description}, #{taskType}, #{groupId}, #{deployPath}, #{beforeCommand}, #{afterCommand}, #{stepsDefinition}, " +
-            "#{jenkinsEnabled}, #{jenkinsUrl}, #{jenkinsJobName}, #{jenkinsArtifactPath}, #{jenkinsUser}, #{jenkinsToken}, NOW(), NOW())")
+            "#{jenkinsEnabled}, #{jenkinsUrl}, #{jenkinsJobName}, #{jenkinsArtifactPath}, #{jenkinsUser}, #{jenkinsToken}, " +
+            "#{artifactSource}, #{ossCredentialId}, #{ossBucket}, #{ossObjectKey}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Task task);
 
@@ -28,8 +30,12 @@ public interface TaskMapper {
             "deploy_path=#{deployPath}, before_command=#{beforeCommand}, after_command=#{afterCommand}, steps_definition=#{stepsDefinition}, " +
             "jenkins_enabled=#{jenkinsEnabled}, jenkins_url=#{jenkinsUrl}, jenkins_job_name=#{jenkinsJobName}, " +
             "jenkins_artifact_path=#{jenkinsArtifactPath}, jenkins_user=#{jenkinsUser}, jenkins_token=#{jenkinsToken}, " +
+            "artifact_source=#{artifactSource}, oss_credential_id=#{ossCredentialId}, oss_bucket=#{ossBucket}, oss_object_key=#{ossObjectKey}, " +
             "updated_at=NOW() WHERE id=#{id}")
     int update(Task task);
+
+    @Select("SELECT COUNT(*) FROM tasks WHERE oss_credential_id = #{credentialId}")
+    int countByOssCredentialId(Long credentialId);
 
     @Delete("DELETE FROM tasks WHERE id = #{id}")
     int deleteById(Long id);

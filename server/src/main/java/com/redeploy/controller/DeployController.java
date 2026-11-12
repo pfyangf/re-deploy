@@ -158,6 +158,12 @@ public class DeployController {
         return list;
     }
 
+    @PostMapping("/cancel-active")
+    public ResponseEntity<Map<String, Object>> cancelActiveDeploys() {
+        int cancelled = deployHistoryMapper.cancelActive(LocalDateTime.now());
+        return ResponseEntity.ok(Map.of("cancelled", cancelled));
+    }
+
     @PostMapping("/{id}/cancel")
     public ResponseEntity<Map<String, String>> cancelDeploy(@PathVariable Long id) {
         return deployHistoryMapper.findById(id)

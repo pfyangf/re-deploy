@@ -57,10 +57,16 @@ export default {
   createTask: (data) => api.post('/api/tasks', data),
   updateTask: (id, data) => api.put(`/api/tasks/${id}`, data),
   deleteTask: (id) => api.delete(`/api/tasks/${id}`),
+  getOssCredentials: () => api.get('/api/oss-credentials'),
+  createOssCredential: (data) => api.post('/api/oss-credentials', data),
+  updateOssCredential: (id, data) => api.put(`/api/oss-credentials/${id}`, data),
+  deleteOssCredential: (id) => api.delete(`/api/oss-credentials/${id}`),
+  testOssCredential: (data) => api.post('/api/oss-credentials/test', data),
 
   // Deploy
   createDeploy: (data) => api.post('/api/deploy', data),
   getDeployDetail: (id) => api.get(`/api/deploy/${id}/detail`),
+  cancelActiveDeploys: () => api.post('/api/deploy/cancel-active'),
   getJenkinsBuildHistory: (taskId) => api.get('/api/deploy/jenkins/builds', { params: { taskId } }),
 
   // Artifacts

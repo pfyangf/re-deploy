@@ -39,6 +39,10 @@ public interface DeployHistoryMapper {
                      @Param("status") String status,
                      @Param("completedAt") LocalDateTime completedAt);
 
+    @Update("UPDATE deploy_history SET status='cancelled', completed_at=#{completedAt} " +
+            "WHERE status IN ('pending', 'running')")
+    int cancelActive(@Param("completedAt") LocalDateTime completedAt);
+
     @Update("UPDATE deploy_history SET status=#{status}, completed_at=#{completedAt}, " +
             "error_message=#{errorMessage}, logs=#{logs}, detail_logs=#{detailLogs} WHERE id=#{id}")
     int update(DeployHistory history);

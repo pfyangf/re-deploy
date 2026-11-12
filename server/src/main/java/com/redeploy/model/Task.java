@@ -19,6 +19,11 @@ public class Task {
     private String jenkinsArtifactPath;
     private String jenkinsUser;
     private String jenkinsToken;
+    /** none | jenkins | oss。空值时由 jenkinsEnabled 推断。 */
+    private String artifactSource;
+    private Long ossCredentialId;
+    private String ossBucket;
+    private String ossObjectKey;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -68,6 +73,18 @@ public class Task {
 
     public String getJenkinsToken() { return jenkinsToken; }
     public void setJenkinsToken(String jenkinsToken) { this.jenkinsToken = jenkinsToken; }
+
+    public String getArtifactSource() { return artifactSource; }
+    public void setArtifactSource(String artifactSource) { this.artifactSource = artifactSource; }
+
+    public Long getOssCredentialId() { return ossCredentialId; }
+    public void setOssCredentialId(Long ossCredentialId) { this.ossCredentialId = ossCredentialId; }
+
+    public String getOssBucket() { return ossBucket; }
+    public void setOssBucket(String ossBucket) { this.ossBucket = ossBucket; }
+
+    public String getOssObjectKey() { return ossObjectKey; }
+    public void setOssObjectKey(String ossObjectKey) { this.ossObjectKey = ossObjectKey; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

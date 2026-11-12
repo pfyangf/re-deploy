@@ -36,8 +36,10 @@ function getTaskTypeLabel(type) {
   return map[type] || type
 }
 
-function getJenkinsEnabledLabel(enabled) {
-  return enabled ? '是' : '否'
+function getArtifactSourceLabel(task) {
+  const source = task?.artifactSource || (task?.jenkinsEnabled ? 'jenkins' : 'none')
+  const map = { none: '不下载', jenkins: 'Jenkins', oss: '阿里云 OSS' }
+  return map[source] || source
 }
 
 async function loadData() {
@@ -130,6 +132,11 @@ onMounted(() => {
             {{ getTaskTypeLabel(row.taskType) }}
           </template>
         </el-table-column>
+        <el-table-column label="构建物" width="120">
+          <template #default="{ row }">
+            {{ getArtifactSourceLabel(row) }}
+          </template>
+        </el-table-column>
         <el-table-column label="分组" width="180">
           <template #default="{ row }">
             {{ getGroupName(row.groupId) }}
@@ -194,12 +201,16 @@ onMounted(() => {
         <div><dt>部署路径</dt><dd class="font-mono">{{ currentTask?.deployPath || '—' }}</dd></div>
         <div><dt>前置命令</dt><dd class="font-mono">{{ currentTask?.beforeCommand || '—' }}</dd></div>
         <div><dt>后置命令</dt><dd class="font-mono">{{ currentTask?.afterCommand || '—' }}</dd></div>
-        <div><dt>Jenkins</dt><dd>{{ getJenkinsEnabledLabel(currentTask?.jenkinsEnabled) }}</dd></div>
-        <template v-if="currentTask?.jenkinsEnabled">
+        <div><dt>构建物</dt><dd>{{ getArtifactSourceLabel(currentTask) }}</dd></div>
+        <template v-if="getArtifactSourceLabel(currentTask) === 'Jenkins'">
           <div><dt>地址</dt><dd class="font-mono">{{ currentTask?.jenkinsUrl || '—' }}</dd></div>
           <div><dt>Job</dt><dd class="font-mono">{{ currentTask?.jenkinsJobName || '—' }}</dd></div>
           <div><dt>构件路径</dt><dd class="font-mono">{{ currentTask?.jenkinsArtifactPath || '—' }}</dd></div>
           <div><dt>用户名</dt><dd>{{ currentTask?.jenkinsUser || '—' }}</dd></div>
+        </template>
+        <template v-else-if="getArtifactSourceLabel(currentTask) === '阿里云 OSS'">
+          <div><dt>Bucket</dt><dd class="font-mono">{{ currentTask?.ossBucket || '—' }}</dd></div>
+          <div><dt>对象路径</dt><dd class="font-mono">{{ currentTask?.ossObjectKey || '—' }}</dd></div>
         </template>
         <div><dt>描述</dt><dd>{{ currentTask?.description || '—' }}</dd></div>
       </dl>

@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import api from '../api/client'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const history = ref([])
 const loading = ref(false)
@@ -37,6 +37,9 @@ const filteredHistory = computed(() => {
     return text.includes(q)
   })
 })
+
+const activeCount = computed(() => (statusCounts.value.running || 0) + (statusCounts.value.pending || 0))
+const cancelling = ref(false)
 
 function statusClass(status) {
   const map = {
@@ -90,6 +93,28 @@ async function loadHistory() {
   }
 }
 
+async function cancelActive() {
+  try {
+    await ElMessageBox.confirm(
+      '确定取消全部排队中和执行中的部署吗？目标机上已经开始的步骤会继续跑完，这里只把记录标为已取消。',
+      '取消进行中的部署',
+      { type: 'warning', confirmButtonText: '全部取消', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  cancelling.value = true
+  try {
+    const result = await api.cancelActiveDeploys()
+    ElMessage.success(`已取消 ${result?.cancelled || 0} 条`)
+    await loadHistory()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.error || '取消失败')
+  } finally {
+    cancelling.value = false
+  }
+}
+
 function getStatusText(status) {
   const map = {
     success: '成功',
@@ -135,6 +160,9 @@ onMounted(() => {
       <h2 class="page-title">部署记录</h2>
       <div class="toolbar-actions">
         <span class="page-note">共 {{ history.length }} 条</span>
+        <el-button type="danger" plain :loading="cancelling" :disabled="!activeCount" @click="cancelActive">
+          取消进行中
+        </el-button>
         <el-button @click="loadHistory">刷新</el-button>
       </div>
     </div>

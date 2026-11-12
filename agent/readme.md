@@ -48,7 +48,7 @@ sudo systemctl enable deploy-agent
 sudo systemctl disable deploy-agent
 
 # 查看实时日志
-journalctl -u deploy-agent -f
+    journalctl -u deploy-agent -f
 
 # 查看首次启动生成的 Token
 journalctl -u deploy-agent | grep -A2 "Agent Token"

@@ -39,6 +39,9 @@ public class DeployService {
     private JenkinsService jenkinsService;
 
     @Autowired
+    private OssArtifactService ossArtifactService;
+
+    @Autowired
     private ArtifactService artifactService;
 
     @Autowired
@@ -50,8 +53,8 @@ public class DeployService {
     @Async("deployExecutor")
     public void deploy(DeployHistory history, Task task, List<Server> servers, Map<String, String> params) {
         // 任务此时才真正从部署线程池队列取出执行。排队期间可能已被取消：
-        if (isCancelled(history.getId())) {
-            log.info("Deployment {} was cancelled while queued, skipping", history.getId());
+        if (!isActive(history.getId())) {
+            log.info("Deployment {} is no longer active, skipping", history.getId());
             return;
         }
         history.setStatus("running");
@@ -63,25 +66,34 @@ public class DeployService {
         // 发布 TASK_STARTED 事件
         publishTaskStarted(history, task, servers);
 
-        // Handle Jenkins artifact download if enabled
+        // 构建物来源三选一：部署前下载一次，失败则整次部署失败
         File downloadedArtifact = null;
-        if (Boolean.TRUE.equals(task.getJenkinsEnabled())) {
-            // Check if build number is provided
+        String artifactOrigin = null;
+        String preferredArtifactName = null;
+        String source = TaskArtifactPolicy.resolve(task);
+        if (TaskArtifactPolicy.OSS.equals(source)) {
+            try {
+                downloadedArtifact = ossArtifactService.download(task);
+                artifactOrigin = "OSS";
+                preferredArtifactName = OssLocations.fileName(task.getOssObjectKey());
+                log.info("OSS artifact downloaded: {}", downloadedArtifact.getAbsolutePath());
+                artifactService.registerArtifact(downloadedArtifact);
+            } catch (RuntimeException e) {
+                failBeforeFanout(history, task, servers, "oss",
+                        "从阿里云 OSS 下载构建物失败: " + e.getMessage(),
+                        "OSS download failed: " + e.getMessage());
+                return;
+            }
+        } else if (TaskArtifactPolicy.JENKINS.equals(source)) {
             String buildNumber = params != null ? params.get("jenkinsBuildNumber") : null;
             if (buildNumber == null || buildNumber.isEmpty()) {
-                // Fail immediately if no build number provided
-                history.setStatus("failed");
-                history.setCompletedAt(LocalDateTime.now());
-                history.setErrorMessage("Jenkins is enabled but no build number provided");
-                history.setLogs("Jenkins enabled but missing build number, deployment aborted");
-                deployHistoryMapper.insert(history);
-                publishTaskFailed(history, task, servers,
-                        new DeployResult("all", false, "Missing build number for Jenkins-enabled task"));
+                failBeforeFanout(history, task, servers, "all",
+                        "Jenkins is enabled but no build number provided",
+                        "Jenkins enabled but missing build number, deployment aborted");
                 log.error("Deployment aborted: Jenkins enabled but no build number provided");
                 return;
             }
 
-            // Download artifact from Jenkins
             try {
                 downloadedArtifact = jenkinsService.downloadArtifact(
                         task.getJenkinsUrl(),
@@ -91,20 +103,18 @@ public class DeployService {
                         task.getJenkinsUser(),
                         task.getJenkinsToken()
                 );
+                artifactOrigin = "Jenkins";
                 log.info("Jenkins artifact downloaded: {}", downloadedArtifact.getAbsolutePath());
                 artifactService.registerArtifact(downloadedArtifact);
             } catch (RuntimeException e) {
-                // Download failed, fail the whole deployment
-                history.setStatus("failed");
-                history.setCompletedAt(LocalDateTime.now());
-                history.setErrorMessage("Failed to download artifact from Jenkins: " + e.getMessage());
-                history.setLogs("Jenkins download failed: " + e.getMessage());
-                deployHistoryMapper.insert(history);
-                publishTaskFailed(history, task, servers,
-                        new DeployResult("jenkins", false, e.getMessage()));
+                failBeforeFanout(history, task, servers, "jenkins",
+                        "Failed to download artifact from Jenkins: " + e.getMessage(),
+                        "Jenkins download failed: " + e.getMessage());
                 return;
             }
         }
+
+        final String uploadName = preferredArtifactName;
 
         List<CompletableFuture<DeployResult>> futures = new ArrayList<>();
 
@@ -112,7 +122,7 @@ public class DeployService {
         for (Server server : servers) {
             final File artifact = downloadedArtifact;
             CompletableFuture<DeployResult> future = CompletableFuture.supplyAsync(() -> {
-                return deployToServer(history, task, server, params, artifact);
+                return deployToServer(history, task, server, params, artifact, uploadName);
             }, executorService);
             futures.add(future);
         }
@@ -137,8 +147,8 @@ public class DeployService {
         }
 
          // 执行期间可能已被用户取消：不覆盖终态、不发结果事件
-         if (isCancelled(history.getId())) {
-             log.info("Deployment {} was cancelled, skip final status update", history.getId());
+         if (!isActive(history.getId())) {
+             log.info("Deployment {} already left active state, skip final status update", history.getId());
              return;
          }
 
@@ -164,10 +174,10 @@ public class DeployService {
              }
              detailLogs.append("\n");
          }
-         if (downloadedArtifact != null) {
-             logs.insert(0, String.format("Downloaded artifact from Jenkins: %s (%d bytes)%n",
-                     downloadedArtifact.getName(), downloadedArtifact.length()));
-         }
+        if (downloadedArtifact != null) {
+            logs.insert(0, String.format("Downloaded artifact from %s: %s (%d bytes)%n",
+                    artifactOrigin, downloadedArtifact.getName(), downloadedArtifact.length()));
+        }
          history.setLogs(logs.toString());
          history.setDetailLogs(detailLogs.toString());
 
@@ -193,9 +203,9 @@ public class DeployService {
         log.info("Deployment {} completed with status: {}", history.getId(), history.getStatus());
     }
 
-    private boolean isCancelled(Long deployId) {
+    private boolean isActive(Long deployId) {
         return deployHistoryMapper.findById(deployId)
-                .map(h -> "cancelled".equals(h.getStatus()))
+                .map(h -> "running".equals(h.getStatus()) || "pending".equals(h.getStatus()))
                 .orElse(false);
     }
 
@@ -282,7 +292,21 @@ public class DeployService {
         return p;
     }
 
-    private DeployResult deployToServer(DeployHistory history, Task task, Server server, Map<String, String> params, File jenkinsArtifact) {
+    private void failBeforeFanout(DeployHistory history, Task task, List<Server> servers,
+                                  String serverName, String errorMessage, String logs) {
+        if (!isActive(history.getId())) {
+            return;
+        }
+        history.setStatus("failed");
+        history.setCompletedAt(LocalDateTime.now());
+        history.setErrorMessage(errorMessage);
+        history.setLogs(logs);
+        deployHistoryMapper.update(history);
+        publishTaskFailed(history, task, servers, new DeployResult(serverName, false, errorMessage));
+    }
+
+    private DeployResult deployToServer(DeployHistory history, Task task, Server server,
+                                        Map<String, String> params, File artifact, String preferredName) {
         String serverName = server.getName();
         try {
             log.info("Deploying to server: {}", serverName);
@@ -290,18 +314,20 @@ public class DeployService {
             // 每台目标服务器独立一份参数（内置变量按机注入，避免并行部署共享/并发改写同一 HashMap）
             params = buildServerParams(params, history, task, server);
 
-            // If we have a Jenkins artifact, upload it to the agent
-            if (jenkinsArtifact != null) {
-                // Extract original filename (strip the {job}-{build}- prefix)
-                String filename = jenkinsArtifact.getName();
-                int lastDash = jenkinsArtifact.getName().lastIndexOf('-');
-                if (lastDash >= 0 && lastDash < jenkinsArtifact.getName().length() - 1) {
-                    filename = jenkinsArtifact.getName().substring(lastDash + 1);
+            // 有构建物时先推到 Agent。OSS 使用对象文件名；Jenkins 沿用「最后一个 - 之后」的文件名。
+            if (artifact != null) {
+                String filename = preferredName;
+                if (filename == null || filename.isBlank()) {
+                    filename = artifact.getName();
+                    int lastDash = filename.lastIndexOf('-');
+                    if (lastDash >= 0 && lastDash < filename.length() - 1) {
+                        filename = filename.substring(lastDash + 1);
+                    }
                 }
 
                 boolean uploaded = fileTransferService.uploadFileToAgent(
                         server.getHost(), server.getPort(), server.getAgentToken(),
-                        jenkinsArtifact, filename
+                        artifact, filename
                 );
 
                 if (!uploaded) {
@@ -331,7 +357,7 @@ public class DeployService {
             String taskId = (String) executeResp.get("task_id");
 
             // Poll for task completion
-            DeployResult result = pollTaskStatus(server, taskId, serverName);
+            DeployResult result = pollTaskStatus(server, taskId, serverName, history.getId());
             result.setServerHost(server.getHost());
             return result;
 
@@ -343,15 +369,17 @@ public class DeployService {
         }
     }
 
-    private DeployResult pollTaskStatus(Server server, String taskId, String serverName) {
+    private DeployResult pollTaskStatus(Server server, String taskId, String serverName, Long deployId) {
         String url = String.format("http://%s:%d/api/task/%s/status",
                 server.getHost(), server.getPort(), taskId);
         log.info("[Deploy] Polling task status url={} taskId={}", url, taskId);
 
-        int maxAttempts = 600; // 10 minutes with 1 second intervals
-        for (int i = 0; i < maxAttempts; i++) {
+        while (true) {
             try {
                 Thread.sleep(1000);
+                if (deployId != null && !isActive(deployId)) {
+                    return new DeployResult(serverName, false, "Deployment no longer active");
+                }
 
                 Map<?, ?> body = agentHttp.getJson(url, server.getAgentToken(), Map.class);
 
@@ -372,15 +400,11 @@ public class DeployService {
                     result.setTaskLogs(fetchTaskLogs(server, taskId));
                     return result;
                 }
-                // Still running, continue polling
+                // Still running, continue polling until the agent finishes or the user cancels
             } catch (Exception e) {
                 log.warn("Error polling task status: {}", e.getMessage());
             }
         }
-
-        DeployResult timeoutResult = new DeployResult(serverName, false, "Deployment timed out");
-        timeoutResult.setTaskLogs(fetchTaskLogs(server, taskId));
-        return timeoutResult;
     }
 
     /**

@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import api from '../api/client'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stats = ref({
   totalServers: 0,
@@ -47,6 +48,29 @@ const todayCount = computed(() => {
 })
 const running = computed(() => activeDeploys.value.filter(d => d.status === 'running'))
 const queued = computed(() => activeDeploys.value.filter(d => d.status === 'pending'))
+const cancelling = ref(false)
+
+async function cancelActive() {
+  try {
+    await ElMessageBox.confirm(
+      '确定取消全部排队中和执行中的部署吗？目标机上已经开始的步骤会继续跑完，这里只把记录标为已取消。',
+      '取消进行中的部署',
+      { type: 'warning', confirmButtonText: '全部取消', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  cancelling.value = true
+  try {
+    const result = await api.cancelActiveDeploys()
+    ElMessage.success(`已取消 ${result?.cancelled || 0} 条`)
+    await loadData(true)
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.error || '取消失败')
+  } finally {
+    cancelling.value = false
+  }
+}
 
 async function loadData(silent = false) {
   if (!silent) loading.value = true
@@ -163,6 +187,13 @@ onUnmounted(() => {
         <header class="panel-head">
           <h3>部署队列</h3>
           <span>{{ running.length }} 进行中 · {{ queued.length }} 排队中</span>
+          <el-button
+            v-if="running.length || queued.length"
+            text
+            type="danger"
+            :loading="cancelling"
+            @click="cancelActive"
+          >全部取消</el-button>
         </header>
         <div v-if="!running.length && !queued.length" class="empty-block">
           <strong>队列为空</strong>

@@ -48,6 +48,7 @@ public class DataMigration {
         ensureColumnExists("tasks", "group_id", "INTEGER");
         ensureColumnExists("deploy_history", "detail_logs", "LONGTEXT");
         ensureColumnExists("deploy_history", "request_params", "LONGTEXT");
+        ensureOssArtifactSource();
         bindApiKeyOwners();
 
         // Migrate existing data: group_name -> group_id
@@ -67,6 +68,40 @@ public class DataMigration {
             }
         } catch (Exception e) {
             System.err.println("Failed to ensure column " + tableName + "." + columnName + ": " + e.getMessage());
+        }
+    }
+
+    /** 补齐 OSS 凭证表和任务上的构建物来源。已开启 Jenkins 的任务回填为 jenkins。 */
+    private void ensureOssArtifactSource() {
+        try {
+            jdbcTemplate.execute(
+                    "CREATE TABLE IF NOT EXISTS oss_credentials (" +
+                            "id bigint NOT NULL AUTO_INCREMENT," +
+                            "name varchar(100) NOT NULL," +
+                            "endpoint varchar(300) NOT NULL," +
+                            "access_key_id varchar(128) NOT NULL," +
+                            "access_key_secret text NOT NULL," +
+                            "created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP," +
+                            "updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP," +
+                            "PRIMARY KEY (id)," +
+                            "UNIQUE KEY uk_oss_credentials_name (name)" +
+                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Exception e) {
+            System.err.println("Failed to ensure oss_credentials table: " + e.getMessage());
+        }
+        ensureColumnExists("tasks", "artifact_source", "VARCHAR(20) NULL DEFAULT 'none'");
+        ensureColumnExists("tasks", "oss_credential_id", "BIGINT NULL");
+        ensureColumnExists("tasks", "oss_bucket", "VARCHAR(63) NULL");
+        ensureColumnExists("tasks", "oss_object_key", "VARCHAR(1024) NULL");
+        try {
+            int updated = jdbcTemplate.update(
+                    "UPDATE tasks SET artifact_source = 'jenkins' " +
+                            "WHERE jenkins_enabled = 1 AND (artifact_source IS NULL OR artifact_source = '' OR artifact_source = 'none')");
+            if (updated > 0) {
+                System.out.println("Backfilled artifact_source=jenkins for " + updated + " tasks");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to backfill artifact_source: " + e.getMessage());
         }
     }
 
